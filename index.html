@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Notewell</title>
+<meta name="description" content="Notewell is a calm, fast notebook for everything you think. Notebooks, rich pages, checklists, tags and instant search. Free, private, no sign-up.">
+<meta name="theme-color" content="#FDFCFA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161513" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="Notewell · Every thought, kept.">
+<meta property="og:description" content="A calm, fast notebook. Rich pages, checklists, tags and instant search. Free and private.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>
+  // Set theme before first paint to avoid a flash.
+  try {
+    var t = localStorage.getItem('notewell-theme') || 'system';
+    if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="layer"></div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

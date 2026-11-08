@@ -1,0 +1,982 @@
+// Notewell app shell: layout, navigation, notebooks, note list, search palette, menus and autosave.
+import './styles/tokens.css';
+import './styles/prose.css';
+import './styles/editor-ui.css';
+import './styles/app.css';
+
+import * as store from './store.js';
+import * as io from './io.js';
+import { createEditor } from './editor.js';
+import { TEMPLATES } from './templates.js';
+import { seedData } from './seed.js';
+import { icon, LOGO } from './icons.js';
+
+const APP = 'Notewell';
+const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
+const MOD = IS_MAC ? '⌘' : 'Ctrl+';
+const ALT = IS_MAC ? '⌥' : 'Alt+';
+
+// ---------- tiny helpers ----------
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ESC_MAP[c]);
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const isTyping = (t) => t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+
+function relTime(ts) {
+  const d = Date.now() - ts;
+  if (d < 45e3) return 'Just now';
+  if (d < 3600e3) return `${Math.round(d / 60e3)} min ago`;
+  const date = new Date(ts), now = new Date();
+  const days = Math.floor((new Date(now.toDateString()) - new Date(date.toDateString())) / 864e5);
+  if (days === 0) return date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return date.toLocaleDateString('en-IN', { weekday: 'long' });
+  return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: date.getFullYear() === now.getFullYear() ? undefined : 'numeric' });
+}
+const fullDate = (ts) => new Date(ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+// ---------- state ----------
+const S = {
+  notes: new Map(),
+  notebooks: new Map(),
+  view: { kind: 'all' }, // all | pinned | notebook{id} | tag{tag} | trash
+  currentId: null,
+  sort: 'updated',
+  pane: 'list', // mobile: nav | list | editor
+  focus: false,
+  persistent: true,
+};
+const pending = new Map(); // noteId -> timer
+let api = null; // editor api
+let suppressChange = false;
+
+// ---------- persistence ----------
+function queueSave(note) {
+  clearTimeout(pending.get(note.id));
+  pending.set(note.id, setTimeout(() => flushNote(note.id), 350));
+  setSaveState('saving');
+}
+async function flushNote(id) {
+  clearTimeout(pending.get(id));
+  pending.delete(id);
+  const n = S.notes.get(id);
+  if (n) await store.saveNote(n);
+  if (!pending.size) setSaveState('saved');
+}
+const flushAll = () => Promise.all([...pending.keys()].map(flushNote));
+
+function touch(note, { list = true } = {}) {
+  note.updated = Date.now();
+  queueSave(note);
+  if (list) scheduleListRender();
+  if (note.id === S.currentId) renderFooter();
+}
+
+function setSaveState(s) {
+  const node = $('#saveState');
+  if (!node) return;
+  node.dataset.state = s;
+  node.textContent = s === 'saving' ? 'Saving' : 'Saved';
+}
+
+// ---------- derived data ----------
+const liveNotes = () => [...S.notes.values()].filter((n) => !n.trashed);
+const notebookList = () => [...S.notebooks.values()].sort((a, b) => a.name.localeCompare(b.name));
+function allTags() {
+  const m = new Map();
+  for (const n of liveNotes()) for (const t of n.tags) m.set(t, (m.get(t) || 0) + 1);
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+function defaultNotebookId() {
+  if (S.view.kind === 'notebook' && S.notebooks.has(S.view.id)) return S.view.id;
+  const cur = S.notes.get(S.currentId);
+  if (cur && S.notebooks.has(cur.notebookId)) return cur.notebookId;
+  return notebookList()[0]?.id;
+}
+function notesInView(v = S.view) {
+  let arr = [...S.notes.values()];
+  if (v.kind === 'trash') arr = arr.filter((n) => n.trashed);
+  else {
+    arr = arr.filter((n) => !n.trashed);
+    if (v.kind === 'pinned') arr = arr.filter((n) => n.pinned);
+    if (v.kind === 'notebook') arr = arr.filter((n) => n.notebookId === v.id);
+    if (v.kind === 'tag') arr = arr.filter((n) => n.tags.includes(v.tag));
+  }
+  const by = {
+    updated: (a, b) => b.updated - a.updated,
+    created: (a, b) => b.created - a.created,
+    title: (a, b) => (a.title || 'Untitled').localeCompare(b.title || 'Untitled'),
+  }[S.sort];
+  if (v.kind === 'trash') return arr.sort((a, b) => b.trashed - a.trashed);
+  return arr.sort(by);
+}
+function viewTitle(v = S.view) {
+  if (v.kind === 'all') return 'Notes';
+  if (v.kind === 'pinned') return 'Shortcuts';
+  if (v.kind === 'trash') return 'Trash';
+  if (v.kind === 'notebook') return S.notebooks.get(v.id)?.name || 'Notebook';
+  if (v.kind === 'tag') return `#${v.tag}`;
+}
+const sameView = (a, b) => a.kind === b.kind && a.id === b.id && a.tag === b.tag;
+const firstImage = (html) => (html || '').match(/<img[^>]+src="([^"]+)"/)?.[1];
+
+// ---------- shell ----------
+function mountShell() {
+  $('#app').innerHTML = `
+  <div class="shell" id="shell">
+    <aside class="sidebar" aria-label="Navigation">
+      <div class="brand">${LOGO}<span>${APP}</span></div>
+      <div class="new-row">
+        <button class="btn-new" id="newNote" title="New note (${ALT}N)">${icon('plus', 17)}<span>New note</span></button>
+        <button class="btn-new-more" id="newFromTemplate" aria-label="New from template" title="New from template">${icon('template', 17)}</button>
+      </div>
+      <button class="search-trigger" id="openSearch">${icon('search', 16)}<span>Search</span><kbd>${MOD}K</kbd></button>
+      <nav class="nav" id="nav"></nav>
+      <div class="side-foot">
+        <button class="foot-btn" id="themeBtn" aria-label="Appearance" title="Appearance">${icon('sun', 17)}</button>
+        <button class="foot-btn" id="importBtn" aria-label="Import" title="Import notes">${icon('upload', 17)}</button>
+        <button class="foot-btn" id="exportBtn" aria-label="Export backup" title="Export backup">${icon('download', 17)}</button>
+        <button class="foot-btn" id="keysBtn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts">${icon('keyboard', 17)}</button>
+      </div>
+    </aside>
+
+    <section class="list" aria-label="Notes">
+      <header class="list-head">
+        <button class="icon-btn only-mobile" id="toNav" aria-label="Open navigation">${icon('menu')}</button>
+        <div class="list-heading"><h2 id="listTitle"></h2><span id="listCount"></span></div>
+        <button class="icon-btn" id="sortBtn" aria-label="Sort" title="Sort">${icon('sort')}</button>
+        <button class="icon-btn" id="listMore" aria-label="More" title="More">${icon('more')}</button>
+        <button class="icon-btn only-mobile" id="newNoteMobile" aria-label="New note">${icon('plus')}</button>
+      </header>
+      <div class="list-body" id="listBody" role="listbox" aria-label="Notes"></div>
+    </section>
+
+    <main class="editor-pane" id="editorPane">
+      <header class="ed-head">
+        <button class="icon-btn only-mobile" id="toList" aria-label="Back to notes">${icon('chevronLeft')}</button>
+        <button class="crumb" id="nbPicker" title="Move to notebook">${icon('book', 15)}<span id="nbName"></span>${icon('chevronDown', 14)}</button>
+        <span class="grow"></span>
+        <span class="save-state" id="saveState" data-state="saved">Saved</span>
+        <button class="icon-btn" id="pinBtn" aria-label="Add to shortcuts" title="Add to shortcuts">${icon('star')}</button>
+        <button class="icon-btn" id="focusBtn" aria-label="Focus mode" title="Focus mode (${MOD}${IS_MAC ? '⇧' : 'Shift+'}F)">${icon('expand')}</button>
+        <button class="icon-btn" id="noteMore" aria-label="Note actions" title="Note actions">${icon('more')}</button>
+      </header>
+      <div class="trash-banner" id="trashBanner" hidden>
+        <span>This note is in Trash.</span>
+        <button class="btn-quiet" id="restoreBtn">${icon('restore', 15)} Restore</button>
+        <button class="btn-quiet danger" id="purgeBtn">Delete forever</button>
+      </div>
+      <div class="tb-wrap" id="toolbar"></div>
+      <div class="ed-scroll" id="edScroll">
+        <article class="page">
+          <textarea id="title" class="title" rows="1" placeholder="Untitled" aria-label="Title" spellcheck="true"></textarea>
+          <div class="tags" id="tags"></div>
+          <div id="editor" class="editor-host"></div>
+        </article>
+      </div>
+      <footer class="ed-foot"><span id="wordCount"></span><span id="edited"></span></footer>
+      <div class="ed-empty" id="edEmpty">
+        <div class="empty-mark">${icon('notes', 28)}</div>
+        <h3>Nothing open</h3>
+        <p>Pick a note from the list, or start a fresh page.</p>
+        <button class="btn-primary" id="emptyNew">${icon('plus', 16)} New note</button>
+        <div class="empty-keys"><span><kbd>${ALT}N</kbd> new note</span><span><kbd>${MOD}K</kbd> search</span><span><kbd>/</kbd> blocks</span></div>
+      </div>
+    </main>
+  </div>
+  <input type="file" id="importInput" accept=".json,.md,.markdown,.txt,.html,.htm" multiple hidden>`;
+
+  $('#newNote').onclick = () => newNote();
+  $('#newNoteMobile').onclick = () => newNote();
+  $('#emptyNew').onclick = () => newNote();
+  $('#newFromTemplate').onclick = (e) => templateMenu(e.currentTarget);
+  $('#openSearch').onclick = openPalette;
+  $('#themeBtn').onclick = (e) => themeMenu(e.currentTarget);
+  $('#importBtn').onclick = () => $('#importInput').click();
+  $('#importInput').onchange = (e) => { importFiles([...e.target.files]); e.target.value = ''; };
+  $('#exportBtn').onclick = exportBackup;
+  $('#keysBtn').onclick = showShortcuts;
+  $('#sortBtn').onclick = (e) => sortMenu(e.currentTarget);
+  $('#listMore').onclick = (e) => listMenu(e.currentTarget);
+  $('#toNav').onclick = () => setPane('nav');
+  $('#toList').onclick = () => setPane('list');
+  $('#nbPicker').onclick = (e) => { const n = current(); if (n && !n.trashed) moveMenu(e.currentTarget, n); };
+  $('#pinBtn').onclick = () => { const n = current(); if (n) togglePin(n); };
+  $('#focusBtn').onclick = toggleFocus;
+  $('#noteMore').onclick = (e) => { const n = current(); if (n) noteMenu(e.currentTarget, n); };
+  $('#restoreBtn').onclick = () => { const n = current(); if (n) restoreNote(n); };
+  $('#purgeBtn').onclick = () => { const n = current(); if (n) purgeNote(n); };
+
+  // Title
+  const title = $('#title');
+  title.addEventListener('input', () => {
+    autosize(title);
+    const n = current();
+    if (!n || n.trashed) return;
+    n.title = title.value.replace(/\n/g, ' ');
+    touch(n);
+  });
+  title.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || (e.key === 'ArrowDown' && title.selectionStart === title.value.length)) {
+      e.preventDefault();
+      api?.editor.view.focus(); // synchronous, so fast typing can't land in the title
+      api?.focus('start');
+    }
+  });
+
+  // Editor
+  api = createEditor({
+    element: $('#editor'),
+    toolbar: $('#toolbar'),
+    onChange: (editor) => {
+      if (suppressChange) return;
+      const n = current();
+      if (!n || n.trashed) return;
+      n.content = editor.getHTML();
+      n.text = editor.getText({ blockSeparator: '\n' });
+      touch(n);
+    },
+    onImage: async (file) => {
+      try { return await io.compressImage(file); }
+      catch (err) { toast(err?.message || 'That file could not be added.'); throw err; }
+    },
+  });
+}
+
+function autosize(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
+const current = () => S.notes.get(S.currentId) || null;
+
+// ---------- sidebar ----------
+function renderNav() {
+  const live = liveNotes();
+  const trash = S.notes.size - live.length;
+  const counts = new Map();
+  for (const n of live) counts.set(n.notebookId, (counts.get(n.notebookId) || 0) + 1);
+  const item = (v, ic, label, count, extra = '') => `
+    <button class="nav-item ${sameView(v, S.view) ? 'is-active' : ''}" data-view='${esc(JSON.stringify(v))}'>
+      ${icon(ic, 17)}<span class="nav-label">${esc(label)}</span>${extra}<span class="nav-count">${count || ''}</span>
+    </button>`;
+  const nbs = notebookList();
+  const tags = allTags();
+  $('#nav').innerHTML = `
+    ${item({ kind: 'all' }, 'notes', 'Notes', live.length)}
+    ${item({ kind: 'pinned' }, 'star', 'Shortcuts', live.filter((n) => n.pinned).length)}
+    <div class="nav-section"><span>Notebooks</span><button class="mini-btn" id="addNotebook" aria-label="New notebook" title="New notebook">${icon('plus', 15)}</button></div>
+    ${nbs.map((nb) => item({ kind: 'notebook', id: nb.id }, 'book', nb.name, counts.get(nb.id) || 0, `<span class="nav-more" data-nb="${esc(nb.id)}" role="button" aria-label="Notebook options">${icon('more', 15)}</span>`)).join('')}
+    ${tags.length ? `<div class="nav-section"><span>Tags</span></div>${tags.map(([t, c]) => item({ kind: 'tag', tag: t }, 'tag', t, c)).join('')}` : ''}
+    <div class="nav-spacer"></div>
+    ${item({ kind: 'trash' }, 'trash', 'Trash', trash)}`;
+
+  $$('.nav-item', $('#nav')).forEach((b) => {
+    b.onclick = (e) => {
+      const more = e.target.closest('.nav-more');
+      if (more) { e.stopPropagation(); notebookMenu(more, S.notebooks.get(more.dataset.nb)); return; }
+      setView(JSON.parse(b.dataset.view));
+    };
+    b.oncontextmenu = (e) => {
+      const v = JSON.parse(b.dataset.view);
+      if (v.kind !== 'notebook') return;
+      e.preventDefault();
+      notebookMenu(b, S.notebooks.get(v.id));
+    };
+  });
+  $('#addNotebook').onclick = createNotebook;
+}
+
+function setView(v, { keepNote = false } = {}) {
+  S.view = v;
+  renderNav();
+  renderList();
+  setPane('list');
+  if (!keepNote) {
+    const list = notesInView();
+    const cur = current();
+    const curVisible = cur && list.includes(cur);
+    if (!curVisible && !matchMedia('(max-width: 859px)').matches) openNote(list[0]?.id || null);
+  }
+}
+
+// ---------- list ----------
+let listTimer = 0;
+function scheduleListRender() {
+  if (listTimer) return;
+  listTimer = requestAnimationFrame(() => { listTimer = 0; renderList(); renderNav(); });
+}
+
+function renderList() {
+  const list = notesInView();
+  $('#listTitle').textContent = viewTitle();
+  $('#listCount').textContent = plural(list.length, 'note');
+  $('#sortBtn').hidden = S.view.kind === 'trash';
+  const body = $('#listBody');
+  if (!list.length) {
+    const msg = {
+      all: ['No notes yet', 'Your first page is one click away.'],
+      pinned: ['No shortcuts', 'Star a note to keep it here.'],
+      trash: ['Trash is empty', 'Deleted notes wait here until you clear them.'],
+      notebook: ['This notebook is empty', 'Add a page to get started.'],
+      tag: ['Nothing tagged', 'Notes with this tag will show up here.'],
+    }[S.view.kind];
+    body.innerHTML = `<div class="list-empty"><h4>${msg[0]}</h4><p>${msg[1]}</p>${S.view.kind !== 'trash' ? `<button class="btn-quiet" id="listEmptyNew">${icon('plus', 15)} New note</button>` : ''}</div>`;
+    $('#listEmptyNew')?.addEventListener('click', () => newNote());
+    return;
+  }
+  const showNb = S.view.kind !== 'notebook';
+  body.innerHTML = list.map((n) => {
+    const img = firstImage(n.content);
+    const snippet = (n.text || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const nb = S.notebooks.get(n.notebookId);
+    return `
+    <button class="card ${n.id === S.currentId ? 'is-active' : ''}" data-id="${esc(n.id)}" role="option" aria-selected="${n.id === S.currentId}">
+      <div class="card-main">
+        <div class="card-title">${n.pinned && S.view.kind !== 'pinned' ? `<span class="card-pin">${icon('star', 12)}</span>` : ''}${esc(n.title || 'Untitled')}</div>
+        <div class="card-snippet">${snippet ? esc(snippet) : '<span class="muted">No additional text</span>'}</div>
+        <div class="card-meta"><span>${relTime(S.view.kind === 'trash' ? n.trashed : n.updated)}</span>${showNb && nb ? `<span class="dot"></span><span>${esc(nb.name)}</span>` : ''}${n.tags.slice(0, 2).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>
+      </div>
+      ${img ? `<img class="card-thumb" src="${esc(img)}" alt="" loading="lazy">` : ''}
+    </button>`;
+  }).join('');
+  $$('.card', body).forEach((c) => {
+    c.onclick = () => { openNote(c.dataset.id); setPane('editor'); };
+    c.oncontextmenu = (e) => { e.preventDefault(); const n = S.notes.get(c.dataset.id); if (n) noteMenu(c, n, { x: e.clientX, y: e.clientY }); };
+  });
+}
+
+// keyboard navigation in list
+document.addEventListener('keydown', (e) => {
+  if (!e.target.closest?.('#listBody')) return;
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const cards = $$('#listBody .card');
+  const i = cards.indexOf(document.activeElement);
+  const next = cards[Math.max(0, Math.min(cards.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))];
+  if (next) { next.focus(); openNote(next.dataset.id); }
+});
+
+// ---------- editor pane ----------
+function openNote(id) {
+  const prev = S.currentId;
+  if (prev && pending.has(prev)) flushNote(prev);
+  S.currentId = id;
+  const n = current();
+  $('#editorPane').classList.toggle('is-empty', !n);
+  $$('#listBody .card').forEach((c) => { const on = c.dataset.id === id; c.classList.toggle('is-active', on); c.setAttribute('aria-selected', on); });
+  if (!n) return;
+  suppressChange = true;
+  api.setContent(n.content || '');
+  suppressChange = false;
+  api.setEditable(!n.trashed);
+  const t = $('#title');
+  t.value = n.title || '';
+  t.readOnly = !!n.trashed;
+  requestAnimationFrame(() => autosize(t));
+  $('#trashBanner').hidden = !n.trashed;
+  $('#editorPane').classList.toggle('is-trashed', !!n.trashed);
+  $('#edScroll').scrollTop = 0;
+  renderHead();
+  renderTags();
+  renderFooter();
+  store.setSetting('lastNote', id);
+}
+
+function renderHead() {
+  const n = current();
+  if (!n) return;
+  $('#nbName').textContent = S.notebooks.get(n.notebookId)?.name || 'No notebook';
+  const pin = $('#pinBtn');
+  pin.classList.toggle('is-active', !!n.pinned);
+  pin.title = n.pinned ? 'Remove from shortcuts' : 'Add to shortcuts';
+  pin.setAttribute('aria-pressed', !!n.pinned);
+  pin.hidden = !!n.trashed;
+  $('#nbPicker').disabled = !!n.trashed;
+}
+
+function renderFooter() {
+  const n = current();
+  if (!n) return;
+  const words = (n.text || '').split(/\s+/).filter(Boolean).length;
+  $('#wordCount').textContent = `${plural(words, 'word')} · ${(n.text || '').length.toLocaleString('en-IN')} characters`;
+  $('#edited').textContent = `Edited ${relTime(n.updated).replace(/^Just now$/, 'just now')}`;
+  $('#edited').title = `Created ${fullDate(n.created)}\nUpdated ${fullDate(n.updated)}`;
+}
+setInterval(() => { renderFooter(); }, 30e3);
+
+function renderTags() {
+  const n = current();
+  const box = $('#tags');
+  if (!n) return;
+  box.innerHTML = `${n.tags.map((t) => `<span class="tag">${icon('tag', 12)}<span>${esc(t)}</span>${n.trashed ? '' : `<button aria-label="Remove tag ${esc(t)}" data-tag="${esc(t)}">${icon('x', 12)}</button>`}</span>`).join('')}
+    ${n.trashed ? '' : `<input class="tag-input" id="tagInput" placeholder="${n.tags.length ? 'Add tag' : 'Add a tag'}" list="tagList" aria-label="Add tag" enterkeyhint="done"><datalist id="tagList">${allTags().filter(([t]) => !n.tags.includes(t)).map(([t]) => `<option value="${esc(t)}">`).join('')}</datalist>`}`;
+  $$('button[data-tag]', box).forEach((b) => (b.onclick = () => { n.tags = n.tags.filter((x) => x !== b.dataset.tag); touch(n); renderTags(); }));
+  const input = $('#tagInput');
+  if (!input) return;
+  const commit = () => {
+    const v = input.value.trim().replace(/^#/, '').replace(/,$/, '').trim().slice(0, 40);
+    input.value = '';
+    if (!v || n.tags.some((t) => t.toLowerCase() === v.toLowerCase())) return;
+    n.tags = [...n.tags, v];
+    touch(n);
+    renderTags();
+    $('#tagInput')?.focus();
+  };
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); commit(); }
+    else if (e.key === 'Backspace' && !input.value && n.tags.length) { n.tags = n.tags.slice(0, -1); touch(n); renderTags(); $('#tagInput')?.focus(); }
+    else if (e.key === 'Escape') { input.value = ''; input.blur(); }
+  };
+  input.onchange = () => { if (allTags().some(([t]) => t === input.value)) commit(); };
+  input.onblur = () => { if (input.value.trim()) commit(); };
+}
+
+// ---------- note operations ----------
+async function newNote({ title = '', html = '', notebookId } = {}) {
+  let nbId = notebookId || defaultNotebookId();
+  if (!nbId) nbId = (await makeNotebook('Personal')).id;
+  const now = Date.now();
+  const n = {
+    id: store.uid('n'), notebookId: nbId, title, content: html, text: html ? io.htmlToText(html) : '',
+    tags: S.view.kind === 'tag' ? [S.view.tag] : [], pinned: S.view.kind === 'pinned', created: now, updated: now, trashed: null,
+  };
+  S.notes.set(n.id, n);
+  store.saveNote(n); // fire-and-forget: UI must respond instantly so no keystrokes are lost
+  if (S.view.kind === 'trash' || (S.view.kind === 'notebook' && S.view.id !== nbId)) S.view = { kind: 'notebook', id: nbId };
+  renderNav();
+  renderList();
+  openNote(n.id);
+  setPane('editor');
+  if (title) { api.editor.view.focus(); api.focus('end'); } else $('#title').focus();
+  return n;
+}
+
+async function duplicateNote(n) {
+  const now = Date.now();
+  const copy = { ...n, id: store.uid('n'), title: `${n.title || 'Untitled'} copy`, tags: [...n.tags], pinned: false, created: now, updated: now };
+  S.notes.set(copy.id, copy);
+  await store.saveNote(copy);
+  renderNav(); renderList(); openNote(copy.id);
+  toast('Note duplicated');
+}
+
+function trashNote(n) {
+  n.trashed = Date.now();
+  n.pinned = false;
+  flushNote(n.id);
+  store.saveNote(n);
+  afterRemoval(n.id);
+  toast('Moved to Trash', { label: 'Undo', fn: () => restoreNote(n, { quiet: true }) });
+}
+function restoreNote(n, { quiet } = {}) {
+  n.trashed = null;
+  store.saveNote(n);
+  renderNav(); renderList();
+  if (S.currentId === n.id || quiet) openNote(n.id);
+  if (!quiet) toast(`Restored to ${S.notebooks.get(n.notebookId)?.name || 'notebook'}`);
+}
+async function purgeNote(n) {
+  const ok = await ask({ title: 'Delete forever?', message: `"${n.title || 'Untitled'}" will be permanently deleted. This can't be undone.`, confirm: 'Delete', danger: true });
+  if (!ok) return;
+  S.notes.delete(n.id);
+  clearTimeout(pending.get(n.id)); pending.delete(n.id);
+  await store.deleteNote(n.id);
+  afterRemoval(n.id);
+}
+function afterRemoval(id) {
+  const list = notesInView();
+  renderNav(); renderList();
+  if (S.currentId === id) {
+    const next = list[0]?.id || null;
+    openNote(next);
+    if (!next || matchMedia('(max-width: 859px)').matches) setPane('list');
+  }
+}
+async function emptyTrash() {
+  const trashed = [...S.notes.values()].filter((n) => n.trashed);
+  if (!trashed.length) return;
+  const ok = await ask({ title: 'Empty Trash?', message: `${plural(trashed.length, 'note')} will be permanently deleted.`, confirm: 'Empty Trash', danger: true });
+  if (!ok) return;
+  for (const n of trashed) { S.notes.delete(n.id); await store.deleteNote(n.id); }
+  renderNav(); renderList(); openNote(null);
+}
+function togglePin(n) {
+  n.pinned = !n.pinned;
+  store.saveNote(n);
+  renderHead(); renderNav(); renderList();
+  toast(n.pinned ? 'Added to Shortcuts' : 'Removed from Shortcuts');
+}
+function moveNote(n, nbId) {
+  if (n.notebookId === nbId) return;
+  n.notebookId = nbId;
+  touch(n);
+  renderHead(); renderNav(); renderList();
+  toast(`Moved to ${S.notebooks.get(nbId)?.name}`);
+}
+
+// ---------- notebooks ----------
+async function makeNotebook(name) {
+  const now = Date.now();
+  const nb = { id: store.uid('b'), name, created: now, updated: now };
+  S.notebooks.set(nb.id, nb);
+  await store.saveNotebook(nb);
+  return nb;
+}
+async function createNotebook() {
+  const name = await ask({ title: 'New notebook', input: { placeholder: 'Notebook name', value: '' }, confirm: 'Create' });
+  if (!name) return null;
+  const nb = await makeNotebook(name);
+  setView({ kind: 'notebook', id: nb.id });
+  return nb;
+}
+async function renameNotebook(nb) {
+  const name = await ask({ title: 'Rename notebook', input: { value: nb.name, placeholder: 'Notebook name' }, confirm: 'Rename' });
+  if (!name || name === nb.name) return;
+  nb.name = name; nb.updated = Date.now();
+  await store.saveNotebook(nb);
+  renderNav(); renderList(); renderHead();
+}
+async function deleteNotebook(nb) {
+  if (S.notebooks.size <= 1) { toast('You need at least one notebook.'); return; }
+  const inside = [...S.notes.values()].filter((n) => n.notebookId === nb.id);
+  const live = inside.filter((n) => !n.trashed).length;
+  const ok = await ask({ title: `Delete "${nb.name}"?`, message: live ? `Its ${plural(live, 'note')} will move to Trash, where you can restore them.` : 'This notebook is empty.', confirm: 'Delete notebook', danger: true });
+  if (!ok) return;
+  const fallback = notebookList().find((b) => b.id !== nb.id).id;
+  for (const n of inside) { n.notebookId = fallback; if (!n.trashed) n.trashed = Date.now(); n.pinned = false; await store.saveNote(n); }
+  S.notebooks.delete(nb.id);
+  await store.deleteNotebook(nb.id);
+  if (S.view.kind === 'notebook' && S.view.id === nb.id) setView({ kind: 'all' });
+  else { renderNav(); renderList(); }
+  if (inside.some((n) => n.id === S.currentId)) openNote(current()?.id ?? null);
+}
+
+// ---------- menus ----------
+let menuEl = null;
+function closeMenu() { menuEl?.remove(); menuEl = null; document.removeEventListener('pointerdown', outsideMenu, true); }
+function outsideMenu(e) { if (menuEl && !menuEl.contains(e.target)) closeMenu(); }
+function openMenu(anchor, items, { at } = {}) {
+  closeMenu();
+  const m = el(`<div class="menu" role="menu"></div>`);
+  items.filter(Boolean).forEach((it) => {
+    if (it === '-') { m.append(el('<div class="menu-sep"></div>')); return; }
+    if (it.header) { m.append(el(`<div class="menu-header">${esc(it.header)}</div>`)); return; }
+    const b = el(`<button class="menu-item ${it.danger ? 'danger' : ''}" role="menuitem">
+      <span class="menu-ic">${it.checked ? icon('tick', 15) : it.icon ? icon(it.icon, 16) : ''}</span>
+      <span class="menu-label">${esc(it.label)}</span>${it.hint ? `<span class="menu-hint">${esc(it.hint)}</span>` : ''}${it.sub ? icon('chevronRight', 14) : ''}</button>`);
+    if (it.disabled) b.disabled = true;
+    b.onclick = (e) => { e.stopPropagation(); if (!it.sub) closeMenu(); it.onClick?.(b); };
+    m.append(b);
+  });
+  $('#layer').append(m);
+  menuEl = m;
+  const r = at ? { left: at.x, right: at.x, bottom: at.y, top: at.y } : anchor.getBoundingClientRect();
+  const mw = m.offsetWidth, mh = m.offsetHeight;
+  let x = r.left; if (x + mw > innerWidth - 8) x = Math.max(8, r.right - mw);
+  let y = r.bottom + 6; if (y + mh > innerHeight - 8) y = Math.max(8, r.top - mh - 6);
+  m.style.left = `${x}px`; m.style.top = `${y}px`;
+  setTimeout(() => document.addEventListener('pointerdown', outsideMenu, true));
+  m.addEventListener('keydown', (e) => {
+    const btns = $$('.menu-item:not(:disabled)', m);
+    const i = btns.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); btns[(i + 1) % btns.length]?.focus(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); btns[(i - 1 + btns.length) % btns.length]?.focus(); }
+    if (e.key === 'Escape') { e.preventDefault(); closeMenu(); anchor?.focus?.(); }
+  });
+  $('.menu-item:not(:disabled)', m)?.focus({ preventScroll: true });
+  return m;
+}
+
+function templateMenu(anchor) {
+  openMenu(anchor, [
+    { header: 'Start from a template' },
+    { label: 'Blank note', icon: 'file', hint: `${ALT}N`, onClick: () => newNote() },
+    '-',
+    ...TEMPLATES.map((t) => ({ label: t.name, icon: t.icon, onClick: () => newNote({ title: t.title(), html: t.html() }) })),
+  ]);
+}
+function themeMenu(anchor) {
+  const cur = localStorage.getItem('notewell-theme') || 'system';
+  openMenu(anchor, [
+    { header: 'Appearance' },
+    ...[['system', 'Match system', 'monitor'], ['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']].map(([v, l, ic]) => ({ label: l, icon: ic, checked: cur === v, onClick: () => setTheme(v) })),
+  ]);
+}
+function sortMenu(anchor) {
+  openMenu(anchor, [
+    { header: 'Sort by' },
+    ...[['updated', 'Date updated'], ['created', 'Date created'], ['title', 'Title']].map(([v, l]) => ({ label: l, checked: S.sort === v, onClick: () => { S.sort = v; store.setSetting('sort', v); renderList(); } })),
+  ]);
+}
+function listMenu(anchor) {
+  const v = S.view;
+  const items = [{ label: 'New note', icon: 'plus', onClick: () => newNote() }];
+  if (v.kind === 'notebook') {
+    const nb = S.notebooks.get(v.id);
+    items.push('-', { label: 'Rename notebook', icon: 'edit', onClick: () => renameNotebook(nb) }, { label: 'Delete notebook', icon: 'trash', danger: true, onClick: () => deleteNotebook(nb) });
+  }
+  if (v.kind === 'trash') items.splice(0, 1, { label: 'Empty Trash', icon: 'trash', danger: true, onClick: emptyTrash });
+  items.push('-', { label: 'New notebook', icon: 'book', onClick: createNotebook });
+  openMenu(anchor, items);
+}
+function notebookMenu(anchor, nb) {
+  if (!nb) return;
+  openMenu(anchor, [
+    { label: 'New note here', icon: 'plus', onClick: () => { setView({ kind: 'notebook', id: nb.id }, { keepNote: true }); newNote({ notebookId: nb.id }); } },
+    { label: 'Rename', icon: 'edit', onClick: () => renameNotebook(nb) },
+    '-',
+    { label: 'Delete notebook', icon: 'trash', danger: true, onClick: () => deleteNotebook(nb) },
+  ]);
+}
+function moveMenu(anchor, n) {
+  openMenu(anchor, [
+    { header: 'Move to notebook' },
+    ...notebookList().map((nb) => ({ label: nb.name, icon: 'book', checked: nb.id === n.notebookId, onClick: () => moveNote(n, nb.id) })),
+    '-',
+    { label: 'New notebook', icon: 'plus', onClick: async () => { const nb = await createNotebook(); if (nb) { moveNote(n, nb.id); openNote(n.id); } } },
+  ]);
+}
+function noteMenu(anchor, n, opts) {
+  if (n.trashed) {
+    openMenu(anchor, [
+      { label: 'Restore', icon: 'restore', onClick: () => restoreNote(n) },
+      { label: 'Delete forever', icon: 'trash', danger: true, onClick: () => purgeNote(n) },
+    ], opts);
+    return;
+  }
+  openMenu(anchor, [
+    { label: n.pinned ? 'Remove from Shortcuts' : 'Add to Shortcuts', icon: 'star', onClick: () => togglePin(n) },
+    { label: 'Move to', icon: 'move', sub: true, onClick: () => moveMenu(anchor, n) },
+    { label: 'Duplicate', icon: 'copy', onClick: () => duplicateNote(n) },
+    '-',
+    { label: 'Copy as Markdown', icon: 'copy', onClick: () => copyMarkdown(n) },
+    { label: 'Export as Markdown', icon: 'download', onClick: () => io.download(`${io.safeFilename(n.title)}.md`, `# ${n.title || 'Untitled'}\n\n${io.htmlToMarkdown(n.content)}`, 'text/markdown') },
+    { label: 'Export as HTML', icon: 'download', onClick: () => io.download(`${io.safeFilename(n.title)}.html`, io.noteToHtmlDocument(n), 'text/html') },
+    { label: 'Print', icon: 'file', hint: `${MOD}P`, onClick: () => { if (S.currentId !== n.id) openNote(n.id); setTimeout(() => print(), 50); } },
+    '-',
+    { label: 'Move to Trash', icon: 'trash', danger: true, onClick: () => trashNote(n) },
+  ], opts);
+}
+async function copyMarkdown(n) {
+  try { await navigator.clipboard.writeText(`# ${n.title || 'Untitled'}\n\n${io.htmlToMarkdown(n.content)}`); toast('Copied as Markdown'); }
+  catch { toast('Clipboard is blocked in this browser'); }
+}
+
+// ---------- modal ----------
+function ask({ title, message, input, confirm = 'OK', danger }) {
+  return new Promise((resolve) => {
+    const prevFocus = document.activeElement;
+    const wrap = el(`<div class="modal-backdrop"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+      <h3 id="mTitle">${esc(title)}</h3>
+      ${message ? `<p>${esc(message)}</p>` : ''}
+      ${input ? `<input class="modal-input" value="${esc(input.value || '')}" placeholder="${esc(input.placeholder || '')}" maxlength="80">` : ''}
+      <div class="modal-actions"><button class="btn-quiet" data-a="cancel">Cancel</button><button class="${danger ? 'btn-danger' : 'btn-primary'}" data-a="ok">${esc(confirm)}</button></div>
+    </div></div>`);
+    $('#layer').append(wrap);
+    const inp = $('.modal-input', wrap);
+    const done = (v) => { wrap.remove(); prevFocus?.focus?.({ preventScroll: true }); resolve(v); };
+    const ok = () => { if (inp) { const v = inp.value.trim(); if (!v) { inp.focus(); return; } done(v); } else done(true); };
+    $('[data-a="cancel"]', wrap).onclick = () => done(null);
+    $('[data-a="ok"]', wrap).onclick = ok;
+    wrap.onpointerdown = (e) => { if (e.target === wrap) done(null); };
+    wrap.onkeydown = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(null); }
+      if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); ok(); }
+      if (e.key === 'Tab') { // trap focus
+        const f = $$('input,button', wrap); const i = f.indexOf(document.activeElement);
+        e.preventDefault(); f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+      }
+    };
+    requestAnimationFrame(() => (inp ? (inp.focus(), inp.select()) : $('[data-a="ok"]', wrap).focus()));
+  });
+}
+
+// ---------- toast ----------
+let toastTimer;
+function toast(msg, action) {
+  $('#layer .toast')?.remove();
+  clearTimeout(toastTimer);
+  const t = el(`<div class="toast" role="status"><span>${esc(msg)}</span>${action ? `<button>${esc(action.label)}</button>` : ''}</div>`);
+  if (action) $('button', t).onclick = () => { t.remove(); action.fn(); };
+  $('#layer').append(t);
+  toastTimer = setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 200); }, action ? 5000 : 2400);
+}
+
+// ---------- command palette ----------
+function openPalette() {
+  if ($('.palette-backdrop')) return;
+  closeMenu();
+  const prevFocus = document.activeElement;
+  const wrap = el(`<div class="palette-backdrop"><div class="palette" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="palette-input">${icon('search', 18)}<input placeholder="Search notes, notebooks and actions" aria-label="Search" autocomplete="off" spellcheck="false"><kbd>esc</kbd></div>
+    <div class="palette-results" role="listbox"></div>
+  </div></div>`);
+  $('#layer').append(wrap);
+  const input = $('input', wrap), results = $('.palette-results', wrap);
+  let items = [], sel = 0;
+  const close = () => { wrap.remove(); if (document.contains(prevFocus)) prevFocus?.focus?.({ preventScroll: true }); };
+
+  const actions = [
+    { label: 'New note', icon: 'plus', hint: `${ALT}N`, run: () => newNote() },
+    { label: 'New notebook', icon: 'book', run: createNotebook },
+    ...TEMPLATES.map((t) => ({ label: `New from template: ${t.name}`, icon: t.icon, run: () => newNote({ title: t.title(), html: t.html() }) })),
+    { label: 'Toggle dark mode', icon: 'moon', run: () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark') },
+    { label: 'Focus mode', icon: 'expand', hint: `${MOD}${IS_MAC ? '⇧' : 'Shift+'}F`, run: toggleFocus },
+    { label: 'Export backup', icon: 'download', run: exportBackup },
+    { label: 'Import notes', icon: 'upload', run: () => $('#importInput').click() },
+    { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: showShortcuts },
+    { label: 'Go to Trash', icon: 'trash', run: () => setView({ kind: 'trash' }) },
+    { label: 'Go to Shortcuts', icon: 'star', run: () => setView({ kind: 'pinned' }) },
+  ];
+
+  const snippetAround = (text, terms) => {
+    const lower = text.toLowerCase();
+    let at = -1;
+    for (const t of terms) { at = lower.indexOf(t); if (at >= 0) break; }
+    const start = Math.max(0, at - 40);
+    const raw = (start ? '…' : '') + text.slice(start, start + 140).replace(/\s+/g, ' ');
+    return highlight(raw, terms);
+  };
+  const highlight = (s, terms) => {
+    let out = esc(s);
+    for (const t of terms) if (t) out = out.replace(new RegExp(`(${esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'), '<mark>$1</mark>');
+    return out;
+  };
+
+  function search() {
+    const q = input.value.trim().toLowerCase();
+    const terms = q.split(/\s+/).filter(Boolean);
+    items = [];
+    if (!terms.length) {
+      const recent = liveNotes().sort((a, b) => b.updated - a.updated).slice(0, 6);
+      if (recent.length) items.push({ section: 'Recent' }, ...recent.map((n) => ({ note: n, html: esc(n.title || 'Untitled'), sub: S.notebooks.get(n.notebookId)?.name })));
+      items.push({ section: 'Actions' }, ...actions.slice(0, 2).concat(actions.slice(-5)).map((a) => ({ action: a })));
+    } else {
+      const scored = [];
+      for (const n of liveNotes()) {
+        const title = (n.title || 'Untitled').toLowerCase(), text = (n.text || '').toLowerCase(), tags = n.tags.join(' ').toLowerCase();
+        let score = 0, ok = true;
+        for (const t of terms) {
+          if (title.startsWith(t)) score += 6;
+          else if (title.includes(t)) score += 4;
+          else if (tags.includes(t)) score += 3;
+          else if (text.includes(t)) score += 1;
+          else { ok = false; break; }
+        }
+        if (ok) scored.push({ n, score: score + n.updated / 1e14 });
+      }
+      scored.sort((a, b) => b.score - a.score);
+      const notes = scored.slice(0, 30).map(({ n }) => ({ note: n, html: highlight(n.title || 'Untitled', terms), snippet: snippetAround(n.text || '', terms), sub: S.notebooks.get(n.notebookId)?.name }));
+      const nbs = notebookList().filter((nb) => terms.every((t) => nb.name.toLowerCase().includes(t))).map((nb) => ({ action: { label: `Open notebook: ${nb.name}`, icon: 'book', run: () => setView({ kind: 'notebook', id: nb.id }) } }));
+      const tags = allTags().filter(([t]) => terms.every((x) => t.toLowerCase().includes(x))).slice(0, 4).map(([t]) => ({ action: { label: `Open tag: ${t}`, icon: 'tag', run: () => setView({ kind: 'tag', tag: t }) } }));
+      const acts = actions.filter((a) => terms.every((t) => a.label.toLowerCase().includes(t))).map((a) => ({ action: a }));
+      if (notes.length) items.push({ section: `Notes · ${scored.length}` }, ...notes);
+      if (nbs.length || tags.length) items.push({ section: 'Go to' }, ...nbs, ...tags);
+      if (acts.length) items.push({ section: 'Actions' }, ...acts);
+      if (!notes.length) items.push({ section: 'Create' }, { action: { label: `New note "${input.value.trim()}"`, icon: 'plus', run: () => newNote({ title: input.value.trim() }) } });
+    }
+    sel = items.findIndex((i) => !i.section);
+    draw();
+  }
+  function draw() {
+    results.innerHTML = items.map((it, i) => {
+      if (it.section) return `<div class="pal-section">${esc(it.section)}</div>`;
+      if (it.note) return `<button class="pal-item ${i === sel ? 'is-sel' : ''}" data-i="${i}" role="option">
+        <span class="pal-ic">${icon(it.note.pinned ? 'star' : 'notes', 16)}</span>
+        <span class="pal-text"><span class="pal-title">${it.html}</span>${it.snippet ? `<span class="pal-snippet">${it.snippet}</span>` : ''}</span>
+        <span class="pal-hint">${esc(it.sub || '')}</span></button>`;
+      return `<button class="pal-item ${i === sel ? 'is-sel' : ''}" data-i="${i}" role="option">
+        <span class="pal-ic">${icon(it.action.icon, 16)}</span><span class="pal-text"><span class="pal-title">${esc(it.action.label)}</span></span>
+        <span class="pal-hint">${esc(it.action.hint || '')}</span></button>`;
+    }).join('') || `<div class="pal-empty">No results</div>`;
+    $('.is-sel', results)?.scrollIntoView({ block: 'nearest' });
+    $$('.pal-item', results).forEach((b) => {
+      b.onclick = () => choose(+b.dataset.i);
+      b.onmousemove = () => { if (sel !== +b.dataset.i) { sel = +b.dataset.i; $$('.pal-item', results).forEach((x) => x.classList.toggle('is-sel', x === b)); } };
+    });
+  }
+  function choose(i) {
+    const it = items[i];
+    if (!it || it.section) return;
+    close();
+    if (it.note) {
+      if (!notesInView().includes(it.note)) setView({ kind: 'all' }, { keepNote: true });
+      openNote(it.note.id);
+      setPane('editor');
+    } else it.action.run();
+  }
+  const move = (d) => {
+    if (!items.some((x) => !x.section)) return;
+    do { sel = (sel + d + items.length) % items.length; } while (items[sel].section);
+    draw();
+  };
+  input.oninput = search;
+  wrap.onkeydown = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); move(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); move(-1); }
+    else if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); choose(sel); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+  };
+  wrap.onpointerdown = (e) => { if (e.target === wrap) close(); };
+  search();
+  input.focus();
+}
+
+function showShortcuts() {
+  const rows = [
+    ['Search everything', `${MOD}K`], ['New note', `${ALT}N`], ['Focus mode', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}F`], ['Insert a block', '/'],
+    ['Bold / Italic / Underline', `${MOD}B  ${MOD}I  ${MOD}U`], ['Highlight', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}H`],
+    ['Heading 1 / 2 / 3', `${MOD}${ALT}1  2  3`], ['Checklist', `[ ] then space`], ['Bulleted / Numbered list', '-  or  1.'],
+    ['Quote / Code block', '>   or   ```'], ['Undo / Redo', `${MOD}Z  ${MOD}${IS_MAC ? '⇧' : 'Shift+'}Z`], ['Show this panel', '?'],
+  ];
+  const wrap = el(`<div class="modal-backdrop"><div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+    <h3>Keyboard shortcuts</h3>
+    <div class="keys">${rows.map(([a, b]) => `<div class="key-row"><span>${esc(a)}</span><kbd>${esc(b)}</kbd></div>`).join('')}</div>
+    <div class="modal-actions"><button class="btn-primary" data-a="ok">Done</button></div></div></div>`);
+  $('#layer').append(wrap);
+  const close = () => wrap.remove();
+  $('[data-a="ok"]', wrap).onclick = close;
+  wrap.onpointerdown = (e) => { if (e.target === wrap) close(); };
+  wrap.onkeydown = (e) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(); } };
+  $('[data-a="ok"]', wrap).focus();
+}
+
+// ---------- theme, focus, panes ----------
+const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const pref = localStorage.getItem('notewell-theme') || 'system';
+  const t = pref === 'system' ? (darkMQ.matches ? 'dark' : 'light') : pref;
+  document.documentElement.dataset.theme = t;
+  $('#themeBtn') && ($('#themeBtn').innerHTML = icon(t === 'dark' ? 'moon' : 'sun', 17));
+}
+function setTheme(v) { try { localStorage.setItem('notewell-theme', v); } catch {} applyTheme(); }
+darkMQ.addEventListener?.('change', applyTheme);
+
+function toggleFocus() {
+  S.focus = !S.focus;
+  document.body.classList.toggle('focus-mode', S.focus);
+  $('#focusBtn').innerHTML = icon(S.focus ? 'shrink' : 'expand');
+  $('#focusBtn').classList.toggle('is-active', S.focus);
+  if (S.focus) toast(`Focus mode. Press Esc to exit.`);
+}
+function setPane(p) {
+  S.pane = p;
+  document.body.dataset.pane = p;
+}
+
+// ---------- import / export ----------
+function exportBackup() {
+  const d = new Date().toISOString().slice(0, 10);
+  io.download(`notewell-backup-${d}.json`, io.makeBackup({ notes: [...S.notes.values()], notebooks: [...S.notebooks.values()] }), 'application/json');
+  toast(`Backup downloaded · ${plural(S.notes.size, 'note')}`);
+}
+
+async function importFiles(files) {
+  let added = 0, updated = 0;
+  try {
+    for (const f of files) {
+      const text = await io.readFileText(f);
+      if (/\.json$/i.test(f.name)) {
+        const data = io.parseBackup(text);
+        for (const nb of data.notebooks) if (!S.notebooks.has(nb.id)) { S.notebooks.set(nb.id, nb); }
+        const nbFallback = defaultNotebookId() || (await makeNotebook('Imported')).id;
+        for (const n of data.notes) {
+          if (!S.notebooks.has(n.notebookId)) n.notebookId = nbFallback;
+          const ex = S.notes.get(n.id);
+          if (!ex) { S.notes.set(n.id, n); added++; }
+          else if (n.updated > ex.updated) { S.notes.set(n.id, n); updated++; }
+        }
+        await store.bulkPut({ notes: [...S.notes.values()], notebooks: [...S.notebooks.values()] });
+      } else {
+        const isHtml = /\.html?$/i.test(f.name);
+        let html = isHtml ? text : io.markdownToHtml(text);
+        let title = f.name.replace(/\.[^.]+$/, '');
+        const h1 = html.match(/^\s*<h1[^>]*>([\s\S]*?)<\/h1>/i);
+        if (h1) { title = io.htmlToText(h1[1]).trim() || title; html = html.slice(h1[0].length); }
+        if (isHtml) { const doc = new DOMParser().parseFromString(html, 'text/html'); doc.querySelectorAll('script,style,iframe,object,embed').forEach((x) => x.remove()); html = doc.body.innerHTML; }
+        const nbId = defaultNotebookId() || (await makeNotebook('Imported')).id;
+        const now = Date.now();
+        const n = { id: store.uid('n'), notebookId: nbId, title, content: html, text: io.htmlToText(html), tags: [], pinned: false, created: now, updated: now, trashed: null };
+        S.notes.set(n.id, n);
+        await store.saveNote(n);
+        added++;
+      }
+    }
+    renderNav(); renderList();
+    toast(`Imported ${plural(added, 'note')}${updated ? `, updated ${updated}` : ''}`);
+  } catch (err) {
+    console.error(err);
+    toast(err?.message || 'Import failed');
+  }
+}
+
+// drag & drop files onto the list to import
+document.addEventListener('dragover', (e) => { if (e.target.closest?.('.list') && e.dataTransfer?.types.includes('Files')) e.preventDefault(); });
+document.addEventListener('drop', (e) => {
+  if (!e.target.closest?.('.list')) return;
+  const files = [...(e.dataTransfer?.files || [])].filter((f) => /\.(json|md|markdown|txt|html?)$/i.test(f.name));
+  if (files.length) { e.preventDefault(); importFiles(files); }
+});
+
+// ---------- global keys ----------
+document.addEventListener('keydown', (e) => {
+  const mod = IS_MAC ? e.metaKey : e.ctrlKey;
+  if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); $('.palette-backdrop') ? null : openPalette(); return; }
+  if (e.altKey && !mod && e.code === 'KeyN') { e.preventDefault(); newNote(); return; }
+  if (mod && e.shiftKey && e.code === 'KeyF') { e.preventDefault(); toggleFocus(); return; }
+  if (mod && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); flushAll().then(() => toast('All changes saved')); return; }
+  if (e.key === 'Escape' && S.focus && !$('.modal-backdrop,.palette-backdrop,.menu')) { toggleFocus(); return; }
+  if (e.key === 'Escape' && menuEl) { closeMenu(); return; }
+  if (e.key === '?' && !isTyping(e.target) && !$('.modal-backdrop')) { e.preventDefault(); showShortcuts(); }
+});
+
+// ---------- lifecycle ----------
+addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
+addEventListener('pagehide', () => flushAll());
+addEventListener('beforeunload', (e) => { if (pending.size) { flushAll(); e.preventDefault(); } });
+
+function applyRemote({ kind, op, id, value }) {
+  if (kind === 'note') {
+    if (pending.has(id)) return; // local edits win
+    if (op === 'delete') S.notes.delete(id); else if (value) S.notes.set(id, value);
+    if (id === S.currentId) {
+      if (op === 'delete' || !value) openNote(null);
+      else if (!$('#editor').contains(document.activeElement) && document.activeElement !== $('#title')) openNote(id);
+      else renderHead();
+    }
+  } else if (kind === 'notebook') {
+    if (op === 'delete') S.notebooks.delete(id); else if (value) S.notebooks.set(id, value);
+  }
+  scheduleListRender();
+}
+
+async function boot() {
+  applyTheme();
+  mountShell();
+  applyTheme();
+  setPane('list');
+  const data = await store.init();
+  S.persistent = data.persistent;
+  for (const nb of data.notebooks) S.notebooks.set(nb.id, nb);
+  for (const n of data.notes) S.notes.set(n.id, n);
+  if (!S.notes.size && !S.notebooks.size && !(await store.getSetting('seeded', false))) {
+    const seed = seedData(store.uid);
+    seed.notebooks.forEach((nb) => S.notebooks.set(nb.id, nb));
+    seed.notes.forEach((n) => S.notes.set(n.id, n));
+    await store.bulkPut(seed);
+    await store.setSetting('seeded', true);
+  }
+  S.sort = (await store.getSetting('sort', 'updated')) || 'updated';
+  renderNav();
+  renderList();
+  const last = await store.getSetting('lastNote', null);
+  const start = S.notes.get(last) && !S.notes.get(last).trashed ? last : notesInView()[0]?.id || null;
+  openNote(start);
+  if (start && matchMedia('(max-width: 859px)').matches) setPane('list');
+  store.onRemoteChange(applyRemote);
+  store.requestPersistence();
+  if (!S.persistent) toast('Private browsing: notes will not be kept after this tab closes. Export a backup to keep them.');
+  document.body.classList.add('ready');
+}
+
+boot();
