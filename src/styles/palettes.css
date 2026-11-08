@@ -234,3 +234,14 @@
 .swatch[data-pal="notes"] { color: #1C1C1E; }
 .swatch[data-pal="notion"], :root[data-theme="dark"] .swatch[data-pal="notion"] { color: #FFFFFF; }
 .swatch[data-pal="evernote"], :root[data-theme="dark"] .swatch[data-pal="evernote"] { color: #FFFFFF; }
+
+/* Default (Evernote) Home: a little colour. Pastel tints on recent notes in a rotating set,
+   and a highlighter behind the first name. Colour only; text contrast is unchanged. */
+:root[data-palette="evernote"] .recent-row > .recent-card:nth-child(4n+1) { background: color-mix(in srgb, #F8A5C2 22%, var(--surface)); }
+:root[data-palette="evernote"] .recent-row > .recent-card:nth-child(4n+2) { background: color-mix(in srgb, #FFD84D 30%, var(--surface)); }
+:root[data-palette="evernote"] .recent-row > .recent-card:nth-child(4n+3) { background: color-mix(in srgb, #7BD9A0 24%, var(--surface)); }
+:root[data-palette="evernote"] .recent-row > .recent-card:nth-child(4n+4) { background: color-mix(in srgb, #B9A6F5 24%, var(--surface)); }
+:root[data-palette="evernote"] #greetName:not(:empty) {
+  background: linear-gradient(transparent 62%, color-mix(in srgb, #FFD84D 70%, transparent) 62%);
+  padding: 0 .08em;
+}
