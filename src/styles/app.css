@@ -1,5 +1,5 @@
 /* Stackpad app shell: three panes (sidebar, note list, editor), menus, modals, palette, toasts.
-   Theme "Aloe" (Pixel / M3 Expressive). Spec: docs/THEME_SPEC.md §7. */
+   Theme: Pixel / M3 Expressive. Spec: docs/THEME_SPEC.md §7. */
 
 body { overflow: hidden; }
 #app { height: 100dvh; }

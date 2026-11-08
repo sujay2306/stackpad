@@ -2,7 +2,7 @@
    data-theme light/dark. No attribute = Notes (Apple Notes yellow on paper / true black), the default.
    Notes is the default; tokens.css holds the base tokens. Its dark is overridden
    here for a more vivid dark mode.
-   Light: Aloe hue-rotated in OKLCH at the same lightness. Dark: deep, barely tinted neutrals, a
+   Light: tinted neutrals and accents, generated in OKLCH at the same lightness. Dark: deep, barely tinted neutrals, a
    high-chroma primary, a coloured container and a hue-tinted selection. Every text pair is checked
    for AA (4.5:1) and every control edge for 3:1 against THEME_SPEC.md section 3. */
 
