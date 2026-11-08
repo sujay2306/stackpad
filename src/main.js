@@ -1,5 +1,6 @@
 // Stackpad app shell: layout, navigation, notebooks, note list, search palette, menus and autosave.
 import './styles/tokens.css';
+import './styles/palettes.css';
 import './styles/prose.css';
 import './styles/editor-ui.css';
 import './styles/app.css';
@@ -714,12 +715,34 @@ function templateMenu(anchor) {
     ...TEMPLATES.map((t) => ({ label: t.name, icon: t.icon, onClick: () => newNote({ title: t.title(), html: t.html() }) })),
   ]);
 }
+// Colour palettes: [id, name, light swatch, dark swatch]. Tokens live in styles/palettes.css. No data-palette = Notes.
+const PALETTES = [['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4'], ['aloe', 'Aloe', '#146C43', '#52CD86'], ['teal', 'Teal', '#006965', '#0DCBC3'], ['ocean', 'Ocean', '#0B618F', '#51BCFF'],
+  ['iris', 'Iris', '#565193', '#A9A5FF'], ['plum', 'Plum', '#7B4477', '#EC86E4'], ['rose', 'Rose', '#8E3958', '#FF83AD'],
+  ['coral', 'Coral', '#8C4234', '#FF8C76'], ['mango', 'Mango', '#8A4605', '#FF9137'], ['sand', 'Sand', '#755423', '#DAA75D'],
+  ['lime', 'Lime', '#486611', '#8EC620'], ['mono', 'Mono', '#2B2D31', '#E8E8E8']];
 function themeMenu(anchor) {
   const cur = localStorage.getItem('stackpad-theme') || 'system';
-  openMenu(anchor, [
+  const m = openMenu(anchor, [
     { header: 'Appearance' },
     ...[['system', 'Match system', 'monitor'], ['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']].map(([v, l, ic]) => ({ label: l, icon: ic, checked: cur === v, onClick: () => setTheme(v) })),
+    '-',
+    { header: 'Colour' },
   ]);
+  const pal = document.documentElement.dataset.palette || 'notes';
+  const row = el(`<div class="swatches" role="radiogroup" aria-label="Colour palette">${PALETTES.map(([id, name, l, d]) =>
+    `<button class="swatch" role="radio" aria-checked="${id === pal}" aria-label="${name}" title="${name}" data-pal="${id}" style="--sw-l:${l};--sw-d:${d}">${icon('tick', 16)}</button>`).join('')}</div>`);
+  row.onclick = (e) => {
+    const b = e.target.closest('.swatch'); if (!b) return;
+    setPalette(b.dataset.pal);
+    $$('.swatch', row).forEach((s) => s.setAttribute('aria-checked', String(s === b)));
+  };
+  m.append(row);
+  const over = m.getBoundingClientRect().bottom - (innerHeight - 8);
+  if (over > 0) m.style.top = `${Math.max(8, m.offsetTop - over)}px`;
+}
+function setPalette(id) {
+  if (id === 'notes') delete document.documentElement.dataset.palette; else document.documentElement.dataset.palette = id;
+  try { localStorage.setItem('stackpad-palette', id); } catch {}
 }
 function sortMenu(anchor) {
   openMenu(anchor, [
