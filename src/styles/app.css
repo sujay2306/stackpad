@@ -134,6 +134,15 @@ body.ready .shell { opacity: 1; }
 .mini-btn { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2); transition: background-color var(--dur-1) var(--ease); }
 .mini-btn:hover { background: var(--surface-2); color: var(--text); }
 .nav-spacer { flex: 1; min-height: 14px; }
+.install-line { display: flex; align-items: center; gap: 2px; margin: 12px 0 0; }
+.install-line[hidden] { display: none; }
+.install-btn {
+  flex: 1; min-width: 0; text-align: left; padding: 8px 12px; border-radius: var(--radius-full);
+  font-size: 13px; font-weight: 500; color: var(--text-2); transition: background-color var(--dur-1) var(--ease);
+}
+.install-btn:hover { background: var(--surface-2); color: var(--text); }
+.install-x { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%; color: var(--text-3); }
+.install-x:hover { background: var(--surface-2); color: var(--text); }
 .side-foot { display: flex; gap: 4px; padding: 16px 0 0; }
 .foot-btn {
   width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2);

@@ -11,6 +11,7 @@ import { TEMPLATES } from './templates.js';
 import { seedData } from './seed.js';
 import * as sync from './sync.js';
 import { icon, LOGO } from './icons.js';
+import { initPWA, mountInstallLine, takeLaunchAction } from './pwa.js';
 
 const APP = 'Stackpad';
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
@@ -136,6 +137,7 @@ function mountShell() {
       <button class="search-trigger" id="openSearch">${icon('search', 16)}<span>Search</span><kbd>${MOD}K</kbd></button>
       <nav class="nav" id="nav"></nav>
       <div class="account" id="account" hidden></div>
+      <div class="install-line" id="installLine" hidden></div>
       <div class="side-foot">
         <button class="foot-btn" id="themeBtn" aria-label="Appearance" title="Appearance">${icon('sun', 17)}</button>
         <button class="foot-btn" id="importBtn" aria-label="Import" title="Import notes">${icon('upload', 17)}</button>
@@ -1057,8 +1059,10 @@ function applyRemote({ kind, op, id, value }) {
 }
 
 async function boot() {
+  initPWA();
   applyTheme();
   mountShell();
+  mountInstallLine($('#installLine'));
   applyTheme();
   setPane('list');
   const data = await store.init();
@@ -1087,6 +1091,8 @@ async function boot() {
   store.requestPersistence();
   if (!S.persistent) toast('Private browsing: notes will not be kept after this tab closes. Export a backup to keep them.');
   document.body.classList.add('ready');
+  const launch = takeLaunchAction(); // app shortcuts; 'today' is reserved for the Today page
+  if (launch === 'new') newNote();
   startSync();
 }
 
