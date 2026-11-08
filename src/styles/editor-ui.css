@@ -20,6 +20,8 @@
 }
 .tb::-webkit-scrollbar { display: none; }
 :root[data-theme='dark'] .tb { background: var(--surface); }
+/* scroll hint when the toolbar is wider than the pane */
+.tb.is-overflowing { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent); }
 
 .tb-group {
   display: flex;

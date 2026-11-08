@@ -1,5 +1,5 @@
 /* Stackpad app shell: three panes (sidebar, note list, editor), menus, modals, palette, toasts.
-   Theme "Aloe" (Pixel / M3 Expressive). Spec: docs/THEME_SPEC.md §7. */
+   Theme: Pixel / M3 Expressive. Spec: docs/THEME_SPEC.md §7. */
 
 body { overflow: hidden; }
 #app { height: 100dvh; }
@@ -64,7 +64,7 @@ body.ready .shell { opacity: 1; }
 .new-row { display: flex; gap: 8px; margin: 0 0 12px; }
 
 /* "New note": Pixel extended FAB (tonal container colours, never the filled accent) */
-.btn-new, .home-new {
+.btn-new {
   display: flex; align-items: center; justify-content: center; gap: 10px;
   background: var(--accent-container); color: var(--on-accent-container);
   border-radius: 20px; font-weight: 600; letter-spacing: .005em;
@@ -73,8 +73,8 @@ body.ready .shell { opacity: 1; }
 }
 .btn-new { flex: 1; height: 48px; padding: 0 20px; font-size: 15px; }
 .btn-new svg { width: 20px; height: 20px; }
-.btn-new:hover, .home-new:hover { background: color-mix(in srgb, var(--on-accent-container) 8%, var(--accent-container)); }
-.btn-new:active, .home-new:active {
+.btn-new:hover { background: color-mix(in srgb, var(--on-accent-container) 8%, var(--accent-container)); }
+.btn-new:active {
   border-radius: var(--radius-press); transform: scale(.97);
   transition-duration: var(--dur-3); transition-timing-function: var(--spring);
 }
@@ -117,6 +117,8 @@ body.ready .shell { opacity: 1; }
 .nav-item.is-active { color: var(--on-accent-container); font-weight: 600; }
 .nav-item.is-active:hover { background: transparent; }
 .nav-item.is-active::before { opacity: 1; transform: none; }
+.nav-item.is-entering::before { animation: navPill var(--dur-4) var(--spring-bouncy); }
+@keyframes navPill { from { transform: scaleX(.6); opacity: 0; } }
 .nav-item.is-active svg { color: var(--on-accent-container); }
 .nav-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { font-size: 12px; font-weight: 500; color: var(--text-3); font-variant-numeric: tabular-nums; }
@@ -134,6 +136,15 @@ body.ready .shell { opacity: 1; }
 .mini-btn { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2); transition: background-color var(--dur-1) var(--ease); }
 .mini-btn:hover { background: var(--surface-2); color: var(--text); }
 .nav-spacer { flex: 1; min-height: 14px; }
+.install-line { display: flex; align-items: center; gap: 2px; margin: 12px 0 0; }
+.install-line[hidden] { display: none; }
+.install-btn {
+  flex: 1; min-width: 0; text-align: left; padding: 8px 12px; border-radius: var(--radius-full);
+  font-size: 13px; font-weight: 500; color: var(--text-2); transition: background-color var(--dur-1) var(--ease);
+}
+.install-btn:hover { background: var(--surface-2); color: var(--text); }
+.install-x { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%; color: var(--text-3); }
+.install-x:hover { background: var(--surface-2); color: var(--text); }
 .side-foot { display: flex; gap: 4px; padding: 16px 0 0; }
 .foot-btn {
   width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2);
@@ -152,15 +163,13 @@ body.ready .shell { opacity: 1; }
 .card {
   width: 100%; display: flex; gap: 12px; text-align: left; padding: 14px 16px; margin-top: 2px;
   background: var(--surface); border-radius: 6px; position: relative;
-  transition: background-color var(--dur-1) var(--ease), border-radius var(--dur-3) var(--spring), margin var(--dur-3) var(--ease);
+  transition: background-color var(--dur-1) var(--ease), border-radius var(--dur-3) var(--spring);
 }
 .card:first-child { margin-top: 0; border-radius: 20px 20px 6px 6px; }
 .card:last-child { border-radius: 6px 6px 20px 20px; }
 .card:only-child { border-radius: 20px; }
 .card:hover { background: var(--surface-2); }
-.card.is-active { background: var(--accent-soft); border-radius: 20px; margin: 6px 0; }
-.card.is-active:first-child { margin-top: 0; }
-.card.is-active + .card { margin-top: 0; }
+.card.is-active { background: var(--accent-soft); border-radius: 20px; }
 .card-main { flex: 1; min-width: 0; }
 .card-title { font-weight: 600; font-size: 15px; line-height: 20px; letter-spacing: -.005em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
 .card-snippet {
@@ -219,6 +228,7 @@ body.ready .shell { opacity: 1; }
 .tag button { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; color: var(--text-3); transition: background-color var(--dur-1) var(--ease); }
 .tag button:hover { background: var(--surface-3); color: var(--text); }
 .tag-input { border: 0; outline: 0; background: none; color: var(--text); font-size: 12.5px; height: 28px; width: 110px; padding: 0 6px; caret-color: var(--accent); }
+.tag-input:first-child { padding-left: 0; }
 .tag-input::placeholder { color: var(--text-3); }
 .tag-input::-webkit-calendar-picker-indicator { display: none !important; }
 .editor-host { min-height: 40vh; }
@@ -265,6 +275,8 @@ body.focus-mode .page { padding-top: 72px; }
 .menu-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .menu-hint { font-size: 12px; color: var(--text-3); }
 .menu-item > svg:last-child { color: var(--text-3); }
+.menu-tick { color: var(--accent-text); display: inline-flex; flex: none; }
+.menu-item[aria-checked='true'] .menu-label { font-weight: 600; }
 
 /* ---------- modal ---------- */
 .modal-backdrop, .palette-backdrop {
@@ -369,7 +381,11 @@ body.focus-mode .page { padding-top: 72px; }
   .list-body { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
   .nav-more { display: grid; }
   .nav-more + .nav-count { display: none; }
+  .tl-note { display: none; }
 }
+
+/* keyboard hints mean nothing on touch */
+@media (hover: none) { .search-trigger kbd, .palette-input kbd, .empty-keys { display: none; } }
 
 /* ---------- print: just the page ---------- */
 @media print {
@@ -385,12 +401,23 @@ body.focus-mode .page { padding-top: 72px; }
 .shell.is-home .list, .shell.is-home .editor-pane { display: none; }
 .shell.is-home .home { display: block; grid-column: 2 / 4; overflow-y: auto; background: var(--bg-2); }
 .home-inner { max-width: 1120px; margin: 0 auto; padding: 48px 40px 72px; }
-/* Hero: boxless. Just the greeting on the canvas and an extended FAB. */
-.home-hero { display: flex; align-items: flex-end; gap: 12px; padding: 8px 4px 0; margin-bottom: 32px; color: var(--text); }
+/* Hero: boxless. Just the greeting on the canvas. */
+.home-hero { display: flex; align-items: flex-end; gap: 12px; padding: 8px 4px 0; margin-bottom: 28px; color: var(--text); }
 .home-hero h1 { font-size: 44px; line-height: 48px; font-weight: 700; letter-spacing: -.03em; font-variation-settings: "ROND" 100; }
 .home-date { font-size: 14px; font-weight: 500; color: var(--text-2); margin-bottom: 8px; }
-.home-new { height: 56px; padding: 0 24px; font-size: 16px; flex: none; }
-.home-new svg { width: 22px; height: 22px; }
+/* Capture: the one field on Home. A single surface, no inner box. */
+.capture {
+  display: block; width: 100%; min-height: 96px; max-height: 50vh; resize: none; border: 0; outline: 0;
+  padding: 20px 24px; border-radius: var(--radius-lg); background: var(--surface); color: var(--text);
+  font: 17px/1.55 var(--font-sans); caret-color: var(--accent); overflow-y: auto;
+  transition: box-shadow var(--dur-1) var(--ease);
+}
+.capture::placeholder { color: var(--text-3); }
+.capture:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.capture-hint { font-size: 12.5px; line-height: 20px; color: var(--text-3); padding: 8px 24px 0; margin-bottom: 28px; visibility: hidden; }
+.capture-hint.is-on { visibility: visible; }
+/* No hardware keyboard to use the hint on: drop it */
+@media (hover: none), (max-width: 859px) { .capture-hint { display: none; } .capture { margin-bottom: 28px; } }
 .widget { background: var(--surface); border-radius: var(--radius-lg); padding: 20px 24px 24px; min-width: 0; }
 .widget-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; min-height: 32px; }
 .widget-head h2 { font-size: 14px; font-weight: 600; letter-spacing: .005em; color: var(--text); }
@@ -401,31 +428,24 @@ body.focus-mode .page { padding-top: 72px; }
 }
 .link-btn:hover:not(:disabled) { background: var(--accent-soft); }
 .link-btn:disabled { color: var(--text-3); }
-.widget-recent { margin-bottom: 16px; }
+/* Recent notes sit directly on the canvas, under a section label */
+.home-recent { margin-bottom: 32px; }
+.home-recent .widget-head { padding: 0 4px; }
 /* Padding + negative margin give the press scale room inside the horizontal scroller. No hover lift or radius morph here. */
 .recent-row { display: grid; grid-auto-flow: column; grid-auto-columns: 196px; gap: 12px; overflow-x: auto; padding: 6px 4px 8px; margin: -6px -4px 0; scrollbar-width: thin; }
 .recent-card {
-  height: 220px; display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 16px; overflow: hidden;
-  border-radius: var(--radius); background: var(--bg-2);
+  height: 184px; display: flex; flex-direction: column; gap: 8px; text-align: left; padding: 16px; overflow: hidden;
+  border-radius: var(--radius); background: var(--surface);
   transition: background-color var(--dur-1) var(--ease), transform var(--dur-3) var(--spring);
 }
 .recent-card:hover { background: var(--surface-2); }
 .recent-card:active { transform: scale(.98); }
 .rc-title { font-weight: 600; font-size: 15px; line-height: 20px; letter-spacing: -.005em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: none; }
-.rc-snippet { font-size: 13px; color: var(--text-2); line-height: 1.5; flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; }
+.rc-snippet { font-size: 13px; color: var(--text-2); line-height: 1.5; flex: 0 1 auto; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
 .recent-card img { flex: 1; min-height: 0; width: 100%; object-fit: cover; border-radius: var(--radius-sm); }
 .rc-meta { font-size: 12px; font-weight: 500; color: var(--text-3); margin-top: auto; flex: none; }
-.recent-new { align-items: center; justify-content: center; gap: 12px; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; font-size: 14px; }
-.recent-new svg { width: 48px; height: 48px; padding: 12px; border-radius: 50%; background: var(--accent-container); color: var(--accent-text); }
-.recent-new:hover { background: color-mix(in srgb, var(--accent-text) 8%, var(--accent-soft)); }
-.widget-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.scratch {
-  width: 100%; min-height: 188px; resize: vertical; border: 0; outline: 0; background: var(--bg-2); border-radius: var(--radius);
-  padding: 16px; color: var(--text); font: 15px/1.6 var(--font-sans); caret-color: var(--accent);
-  transition: box-shadow var(--dur-1) var(--ease);
-}
-.scratch::placeholder { color: var(--text-3); }
-.scratch:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+/* Don't stretch: each widget is as tall as its content */
+.widget-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .task-list, .pin-list { padding: 0; margin: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
 .task-list button, .pin-list button {
   width: 100%; display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 12px; border-radius: var(--radius-full); text-align: left; font-size: 14px;
@@ -436,21 +456,20 @@ body.focus-mode .page { padding-top: 72px; }
 .tl-text, .pin-list span:not(.pl-nb) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-note, .pl-nb { font-size: 12px; color: var(--text-3); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pin-list svg { color: var(--text-2); flex: none; }
-.widget-empty { font-size: 14px; color: var(--text-3); padding: 10px 4px; }
+.widget-empty { font-size: 14px; color: var(--text-3); padding: 4px 4px 0; }
 @media (max-width: 1100px) { .widget-grid { grid-template-columns: 1fr; } .home-inner { padding: 36px 24px 48px; } }
 @media (max-width: 859px) {
   .home { grid-area: 1 / 1; visibility: hidden; }
   .shell.is-home .home { grid-area: 1 / 1; }
   body[data-pane='list'] .shell.is-home .home { visibility: visible; }
   .shell.is-home .list { display: none; }
-  .home-inner { padding: calc(14px + env(safe-area-inset-top)) 14px 40px; }
-  .home-hero { padding: 4px 0 0; flex-wrap: wrap; align-items: flex-start; margin-bottom: 24px; }
+  .home-inner { padding: calc(8px + env(safe-area-inset-top)) 16px 48px; }
+  .home-hero { padding: 0; flex-wrap: wrap; align-items: center; row-gap: 12px; margin-bottom: 20px; }
+  .home-hero #homeToNav { margin-left: -10px; } /* the glyph lines up with the 16px gutter */
+  .capture { padding: 16px 18px; font-size: 16px; min-height: 88px; margin-bottom: 32px; }
   .home-hero > div { flex: 1; min-width: 0; }
-  .home-hero > .grow { display: none; }
   .home-hero h1 { font-size: 34px; line-height: 40px; }
-  .home-new { width: 100%; }
   .recent-row { grid-auto-columns: 160px; }
-  .recent-card { height: 184px; }
 }
 
 /* ===== account / sync ===== */
@@ -472,6 +491,8 @@ body.focus-mode .page { padding-top: 72px; }
 .signin-btn span, .acc-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
 .signin-btn b, .acc-text b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .signin-btn small, .acc-text small { font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.signin-btn span { flex: 1; }
+.signin-btn small { display: block; overflow: hidden; text-overflow: ellipsis; }
 .acc-text small i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex: none; }
 .acc-text small.sync-synced i { background: var(--ok); }
 .acc-text small.sync-syncing i { background: var(--star); animation: pulse 1s infinite alternate; }
@@ -488,6 +509,5 @@ body.focus-mode .page { padding-top: 72px; }
   .home-hero { flex-direction: row; }
   .home-hero #homeToNav { order: -2; }
   .home-hero > div:not(.m-quick) { flex-basis: 100%; }
-  .home-hero .grow { display: none; }
   button.m-signin { height: 34px; padding: 0 14px; border-radius: var(--radius-full); background: var(--accent-container); color: var(--on-accent-container); font-weight: 600; font-size: 13.5px; display: inline-flex; align-items: center; }
 }

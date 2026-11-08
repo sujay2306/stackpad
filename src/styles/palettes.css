@@ -1,0 +1,230 @@
+/* Stackpad colour palettes (Pixel "Wallpaper & style"), set via <html data-palette="..."> on top of
+   data-theme light/dark. No attribute = Notes (Apple Notes yellow on paper / true black), the default.
+   Notes is the default; tokens.css holds the base tokens. Its dark is overridden
+   here for a more vivid dark mode.
+   Light: tinted neutrals and accents, generated in OKLCH at the same lightness. Dark: deep, barely tinted neutrals, a
+   high-chroma primary, a coloured container and a hue-tinted selection. Every text pair is checked
+   for AA (4.5:1) and every control edge for 3:1 against THEME_SPEC.md section 3. */
+
+:root:not([data-palette]),
+:root[data-palette="notes"] {
+  --bg: #FBFAF7;
+  --bg-2: #F4F2EC;
+  --surface: #FFFFFF;
+  --surface-2: #ECE9E1;
+  --surface-3: #E2DED3;
+  --line: #E8E5DD;
+  --line-2: #CFCABD;
+  --outline: #77736A;
+  --text: #1C1C1E;
+  --text-2: #48463F;
+  --text-3: #646158;
+  --accent: #F7C600;
+  --accent-ink: #1C1C1E;
+  --accent-soft: #FFF4C7;
+  --accent-text: #865E00;
+  --accent-container: #FFE680;
+  --on-accent-container: #3D2F00;
+  --ink: #1C1C1E;
+  --ink-text: #FBFAF7;
+  --ink-accent: #FFD60A;
+}
+
+:root[data-theme="dark"]:not([data-palette]),
+:root[data-theme="dark"][data-palette="notes"] {
+  --bg: #000000;
+  --bg-2: #0A0A0A;
+  --surface: #1C1C1E;
+  --surface-2: #2C2C2E;
+  --surface-3: #3A3A3C;
+  --line: #FFFFFF14;
+  --line-2: #48484A;
+  --outline: #8E8E93;
+  --text: #F2F2F7;
+  --text-2: #C7C7CC;
+  --text-3: #AAAAB0;
+  --accent: #FFD60A;
+  --accent-ink: #1C1C1E;
+  --accent-soft: #3A3000;
+  --accent-text: #FFD60A;
+  --accent-container: #664A00;
+  --on-accent-container: #FFF2B3;
+  --ink: #F2F2F7;
+  --ink-text: #000000;
+  --ink-accent: #8A6100;
+}
+
+/* Notes: yellow is a fill, never a thin line on paper. Rings, carets and input focus use the dark amber. */
+:is(:root:not([data-palette]), :root[data-palette="notes"]):not([data-theme="dark"]) :focus-visible { outline-color: var(--accent-text); }
+:is(:root:not([data-palette]), :root[data-palette="notes"]):not([data-theme="dark"]) :is(.modal-input, .link-pop-input):focus { box-shadow: 0 0 0 2px var(--accent-text); }
+:is(:root:not([data-palette]), :root[data-palette="notes"]):not([data-theme="dark"]) .scratch:focus { box-shadow: inset 0 0 0 2px var(--accent-text); }
+:is(:root:not([data-palette]), :root[data-palette="notes"]):not([data-theme="dark"]) :is(.title, .tag-input, .modal-input, .scratch, .palette-input input, .link-pop-input) { caret-color: var(--accent-text); }
+/* black tick on the yellow checkbox fill, both themes */
+:is(:root:not([data-palette]), :root[data-palette="notes"]) .prose ul[data-type="taskList"] > li input[type="checkbox"]:checked {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.3 4.7-5' fill='none' stroke='%231C1C1E' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+:root[data-palette="notion"] {
+  --bg: #FFFFFF;
+  --bg-2: #F7F6F3;
+  --surface: #FFFFFF;
+  --surface-2: #EFEFED;
+  --surface-3: #E3E2E0;
+  --line: #E9E9E7;
+  --line-2: #D3D1CB;
+  --outline: #898782;
+  --text: #37352F;
+  --text-2: #55534E;
+  --text-3: #666562;
+  --accent: #0E76D4;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E7F3F8;
+  --accent-text: #0067BE;
+  --accent-container: #D8E8F8;
+  --on-accent-container: #0B4A85;
+  --ink: #37352F;
+  --ink-text: #FFFFFF;
+  --ink-accent: #8CC4FF;
+  --hl: #FBF3DB;
+}
+
+:root[data-theme="dark"][data-palette="notion"] {
+  --bg: #000000;
+  --bg-2: #0A0A0A;
+  --surface: #1C1C1E;
+  --surface-2: #2C2C2E;
+  --surface-3: #3A3A3C;
+  --line: #FFFFFF14;
+  --line-2: #48484A;
+  --outline: #8E8E93;
+  --text: #F2F2F7;
+  --text-2: #C7C7CC;
+  --text-3: #AAAAB0;
+  --accent: #0E76D4;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #203A50;
+  --accent-text: #7CBAFF;
+  --accent-container: #1F4A73;
+  --on-accent-container: #D6E9FF;
+  --ink: #F2F2F7;
+  --ink-text: #000000;
+  --ink-accent: #165CA5;
+  --hl: #4D4223;
+}
+
+/* Notion: flat, Notion-sized corners and the system font stack. Scoped to this palette only. */
+:root[data-palette="notion"] {
+  --radius-xs: 3px; --radius-sm: 4px; --radius: 6px; --radius-lg: 8px; --radius-full: 6px; --radius-press: 4px;
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+:root[data-palette="notion"] :is(.btn-primary, .btn-danger, .btn-quiet, .btn-new, .home-new, .link-pop-apply, .trash-banner .btn-quiet,
+  .card, .recent-card, .tb-btn, .icon-btn, .foot-btn, .btn-new-more, .mini-btn, .nav-more, .tag button, .pal-ic, .signin-btn svg, .recent-new svg) {
+  border-radius: var(--radius-sm);
+}
+:root[data-palette="notion"] .card.is-active { margin: 2px 0; }
+
+:root[data-palette="evernote"] {
+  --bg: #FFFFFF;
+  --bg-2: #F8F8F8;
+  --surface: #FFFFFF;
+  --surface-2: #EFEFEF;
+  --surface-3: #E4E4E4;
+  --line: #EAEAEA;
+  --line-2: #D2D2D2;
+  --outline: #7A7A7A;
+  --text: #222222;
+  --text-2: #4F4F4F;
+  --text-3: #656565;
+  --accent: #008523;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E3F5E8;
+  --accent-text: #00782A;
+  --accent-container: #008523;
+  --on-accent-container: #FFFFFF;
+  --ink: #222222;
+  --ink-text: #FFFFFF;
+  --ink-accent: #5FD27F;
+}
+
+:root[data-palette="evernote"] .sidebar {
+  --bg-2: #1A1A1A; --surface: #262626; --surface-2: #2E2E2E; --surface-3: #363636;
+  --line: #2E2E2E; --line-2: #3D3D3D; --text: #FFFFFF; --text-2: #CCCCCC; --text-3: #A6A6A6;
+  --ev-icon: #2DBE60;
+  --accent-container: var(--surface-3); --on-accent-container: #FFFFFF;
+}
+
+:root[data-theme="dark"][data-palette="evernote"] {
+  --bg: #1A1A1A;
+  --bg-2: #212121;
+  --surface: #2B2B2B;
+  --surface-2: #333333;
+  --surface-3: #3C3C3C;
+  --line: #2B2B2B;
+  --line-2: #444444;
+  --outline: #8A8A8A;
+  --text: #E6E6E6;
+  --text-2: #BDBDBD;
+  --text-3: #A6A6A6;
+  --accent: #098827;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #173A22;
+  --accent-text: #3DCB68;
+  --accent-container: #008523;
+  --on-accent-container: #FFFFFF;
+  --ink: #E6E6E6;
+  --ink-text: #1A1A1A;
+  --ink-accent: #00752A;
+}
+
+:root[data-theme="dark"][data-palette="evernote"] .sidebar {
+  --bg-2: #121212; --surface: #1F1F1F; --surface-2: #262626; --surface-3: #2E2E2E;
+  --line: #262626; --line-2: #3D3D3D; --text: #FFFFFF; --text-2: #CCCCCC; --text-3: #A6A6A6;
+  --ev-icon: #2DBE60;
+  --accent-container: var(--surface-3); --on-accent-container: #FFFFFF;
+}
+
+/* Evernote: charcoal sidebar in both themes (scoped tokens above), green "+ New" pill,
+   moderate 6-8px corners and the system font. */
+:root[data-palette="evernote"] {
+  --ev-green: #008523;
+  --radius-xs: 4px; --radius-sm: 6px; --radius: 8px; --radius-lg: 12px; --radius-press: 6px;
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+:root[data-palette="evernote"] .sidebar .btn-new { background: var(--ev-green); color: #FFFFFF; border-radius: var(--radius-full); }
+:root[data-palette="evernote"] .sidebar .btn-new:hover { background: color-mix(in srgb, #FFFFFF 8%, var(--ev-green)); }
+:root[data-palette="evernote"] .sidebar .nav-item.is-active svg { color: var(--ev-icon); }
+:root[data-palette="evernote"] .sidebar .brand { color: #FFFFFF; }
+:root[data-palette="evernote"] .sidebar .signin-btn svg { color: var(--ev-icon); }
+:root[data-palette="evernote"] .recent-new svg { color: var(--on-accent-container); }
+:root[data-palette="evernote"] :is(.nav-item, .card, .recent-card, .tb-btn, .icon-btn, .foot-btn, .btn-new-more, .mini-btn, .nav-more,
+  .tag button, .pal-ic, .task-list button, .pin-list button, .crumb) { border-radius: var(--radius-sm); }
+:root[data-palette="evernote"] .card.is-active { margin: 2px 0; }
+
+/* swatch row in the Appearance menu */
+
+.swatches { display: grid; grid-template-columns: repeat(7, 28px); gap: 10px; padding: 6px 12px 10px; }
+
+.swatch {
+
+  position: relative; width: 28px; height: 28px; border-radius: 50%; flex: none;
+
+  background: var(--sw-l); display: grid; place-items: center; color: #FFFFFF;
+
+  transition: transform var(--dur-3) var(--spring);
+
+}
+
+:root[data-theme="dark"] .swatch { background: var(--sw-d); color: #101411; }
+
+.swatch:hover { transform: scale(1.08); }
+
+.swatch:active { transform: scale(.92); }
+
+.swatch svg { opacity: 0; transform: scale(.4); transition: opacity var(--dur-2) var(--ease), transform var(--dur-4) var(--spring-bouncy); }
+
+.swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
+
+.swatch[aria-checked="true"] svg { opacity: 1; transform: none; }
+.swatch[data-pal="notes"] { color: #1C1C1E; }
+.swatch[data-pal="notion"], :root[data-theme="dark"] .swatch[data-pal="notion"] { color: #FFFFFF; }
+.swatch[data-pal="evernote"], :root[data-theme="dark"] .swatch[data-pal="evernote"] { color: #FFFFFF; }
