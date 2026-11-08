@@ -7,7 +7,7 @@
 2. **Quiet surfaces.** Solid, opaque fills only. No glass, no blur cards, no decorative gradients, no emojis (use SVG icons, 1.5px stroke).
 3. **One accent.** Amber marks focus, selection and "done", and nothing else. Text on amber is always dark (`--accent-ink`).
 4. **Whitespace is fine.** Don't fill empty states with filler blocks; one line of text and one action is enough.
-5. **Calm motion.** Short ease-out moves that tell you where something came from. Never bouncy.
+5. **Calm motion.** Springs on shape and position only; text and colour never bounce.
 
 ## Colour tokens
 | Token | Light | Dark | Use |
