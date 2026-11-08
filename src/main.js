@@ -789,7 +789,7 @@ function templateMenu(anchor) {
   ]);
 }
 // Colour palettes: [id, name, light swatch, dark swatch]. Tokens live in styles/palettes.css. No data-palette = Notes.
-const PALETTES = [['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4'], ['evernote', 'Evernote', '#008523', '#008523']];
+const PALETTES = [['evernote', 'Evernote', '#008523', '#008523'], ['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4']];
 function themeMenu(anchor) {
   const cur = localStorage.getItem('stackpad-theme') || 'system';
   const m = openMenu(anchor, [
@@ -798,7 +798,7 @@ function themeMenu(anchor) {
     '-',
     { header: 'Colour' },
   ]);
-  const pal = document.documentElement.dataset.palette || 'notes';
+  const pal = document.documentElement.dataset.palette || 'evernote';
   const row = el(`<div class="swatches" role="radiogroup" aria-label="Colour palette">${PALETTES.map(([id, name, l, d]) =>
     `<button class="swatch" role="radio" aria-checked="${id === pal}" aria-label="${name}" title="${name}" data-pal="${id}" style="--sw-l:${l};--sw-d:${d}">${icon('tick', 16)}</button>`).join('')}</div>`);
   row.onclick = (e) => {
@@ -811,7 +811,7 @@ function themeMenu(anchor) {
   if (over > 0) m.style.top = `${Math.max(8, m.offsetTop - over)}px`;
 }
 function setPalette(id) {
-  if (id === 'notes') delete document.documentElement.dataset.palette; else document.documentElement.dataset.palette = id;
+  document.documentElement.dataset.palette = id;
   try { localStorage.setItem('stackpad-palette', id); } catch {}
 }
 function sortMenu(anchor) {

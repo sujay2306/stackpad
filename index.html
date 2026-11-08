@@ -22,8 +22,8 @@
     var t = localStorage.getItem('stackpad-theme') || 'system';
     if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     document.documentElement.dataset.theme = t;
-    var p = localStorage.getItem('stackpad-palette');
-    if (p && p !== 'notes') document.documentElement.dataset.palette = p;
+    var p = localStorage.getItem('stackpad-palette') || 'evernote';
+    if (p !== 'notes') document.documentElement.dataset.palette = p;
   } catch (e) {}
 </script>
 </head>
