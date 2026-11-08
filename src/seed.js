@@ -33,7 +33,7 @@ ${task('Type <code>/</code> on an empty line to insert any block')}
 ${task('Press <code>⌘K</code> or <code>Ctrl K</code> to search every note')}
 ${task('Use markdown shortcuts like <code># </code> for a heading or <code>- [ ] </code> for a task')}
 ${task('Drag and drop, or paste, an image straight into a note')}
-${task('Pin a note to keep it in your shortcuts')}
+${task('Pick a colour palette in Appearance settings')}
 ${task('Add tags to group notes across notebooks')}
 ${task('Start a new note from a template')}
 ${task('Turn on focus mode to hide everything but the page')}

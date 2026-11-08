@@ -43,7 +43,7 @@ const fullDate = (ts) => new Date(ts).toLocaleString('en-IN', { day: 'numeric', 
 const S = {
   notes: new Map(),
   notebooks: new Map(),
-  view: { kind: 'all' }, // all | pinned | notebook{id} | tag{tag} | trash
+  view: { kind: 'all' }, // all | notebook{id} | tag{tag} | trash
   currentId: null,
   sort: 'updated',
   pane: 'list', // mobile: nav | list | editor
@@ -103,7 +103,6 @@ function notesInView(v = S.view) {
   if (v.kind === 'trash') arr = arr.filter((n) => n.trashed);
   else {
     arr = arr.filter((n) => !n.trashed);
-    if (v.kind === 'pinned') arr = arr.filter((n) => n.pinned);
     if (v.kind === 'notebook') arr = arr.filter((n) => n.notebookId === v.id);
     if (v.kind === 'tag') arr = arr.filter((n) => n.tags.includes(v.tag));
   }
@@ -117,7 +116,6 @@ function notesInView(v = S.view) {
 }
 function viewTitle(v = S.view) {
   if (v.kind === 'all' || v.kind === 'home') return 'Notes';
-  if (v.kind === 'pinned') return 'Shortcuts';
   if (v.kind === 'trash') return 'Trash';
   if (v.kind === 'notebook') return S.notebooks.get(v.id)?.name || 'Notebook';
   if (v.kind === 'tag') return `#${v.tag}`;
@@ -163,7 +161,6 @@ function mountShell() {
         <button class="crumb" id="nbPicker" title="Move to notebook">${icon('book', 15)}<span id="nbName"></span>${icon('chevronDown', 14)}</button>
         <span class="grow"></span>
         <span class="save-state" id="saveState" data-state="saved">Saved</span>
-        <button class="icon-btn" id="pinBtn" aria-label="Add to shortcuts" title="Add to shortcuts">${icon('star')}</button>
         <button class="icon-btn" id="focusBtn" aria-label="Focus mode" title="Focus mode (${MOD}${IS_MAC ? '⇧' : 'Shift+'}F)">${icon('expand')}</button>
         <button class="icon-btn" id="noteMore" aria-label="Note actions" title="Note actions">${icon('more')}</button>
       </header>
@@ -208,7 +205,6 @@ function mountShell() {
   $('#toNav').onclick = () => setPane('nav');
   $('#toList').onclick = () => setPane('list');
   $('#nbPicker').onclick = (e) => { const n = current(); if (n && !n.trashed) moveMenu(e.currentTarget, n); };
-  $('#pinBtn').onclick = () => { const n = current(); if (n) togglePin(n); };
   $('#focusBtn').onclick = toggleFocus;
   $('#noteMore').onclick = (e) => { const n = current(); if (n) noteMenu(e.currentTarget, n); };
   $('#restoreBtn').onclick = () => { const n = current(); if (n) restoreNote(n); };
@@ -268,7 +264,6 @@ function renderNav() {
   $('#nav').innerHTML = `
     ${item({ kind: 'home' }, 'home', 'Home', '')}
     ${item({ kind: 'all' }, 'notes', 'Notes', live.length)}
-    ${item({ kind: 'pinned' }, 'star', 'Shortcuts', live.filter((n) => n.pinned).length)}
     <div class="nav-section"><span>Notebooks</span><button class="mini-btn" id="addNotebook" aria-label="New notebook" title="New notebook">${icon('plus', 15)}</button></div>
     ${nbs.map((nb) => item({ kind: 'notebook', id: nb.id }, 'book', nb.name, counts.get(nb.id) || 0, `<span class="nav-more" data-nb="${esc(nb.id)}" role="button" aria-label="Notebook options">${icon('more', 15)}</span>`)).join('')}
     ${tags.length ? `<div class="nav-section"><span>Tags</span></div>${tags.map(([t, c]) => item({ kind: 'tag', tag: t }, 'tag', t, c)).join('')}` : ''}
@@ -327,7 +322,6 @@ function renderHome() {
   const h = new Date().getHours();
   const greet = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   const recent = liveNotes().sort((a, b) => b.updated - a.updated).slice(0, 10);
-  const pinned = liveNotes().filter((n) => n.pinned).sort((a, b) => b.updated - a.updated).slice(0, 6);
   const tasks = openTasks();
   const nbName = (n) => esc(S.notebooks.get(n.notebookId)?.name || '');
   home.innerHTML = `
@@ -370,12 +364,6 @@ function renderHome() {
           : `<p class="widget-empty">No open tasks. Type <kbd>[ ]</kbd> in any note to add one.</p>`}
         </section>
 
-        <section class="widget">
-          <div class="widget-head"><h2>Shortcuts</h2><span class="widget-count">${pinned.length}</span></div>
-          ${pinned.length ? `<ul class="pin-list">${pinned.map((n) => `
-            <li><button data-id="${esc(n.id)}">${icon('star', 15)}<span>${esc(n.title || 'Untitled')}</span><span class="pl-nb">${nbName(n)}</span></button></li>`).join('')}</ul>`
-          : `<p class="widget-empty">Star a note to keep it one click away.</p>`}
-        </section>
 
         <section class="widget">
           <div class="widget-head"><h2>Notebooks</h2><button class="link-btn" id="homeNb">${icon('plus', 14)} New</button></div>
@@ -426,7 +414,6 @@ function renderList() {
   if (!list.length) {
     const msg = {
       all: ['No notes yet', 'Your first page is one click away.'],
-      pinned: ['No shortcuts', 'Star a note to keep it here.'],
       trash: ['Trash is empty', 'Deleted notes wait here until you clear them.'],
       notebook: ['This notebook is empty', 'Add a page to get started.'],
       tag: ['Nothing tagged', 'Notes with this tag will show up here.'],
@@ -443,7 +430,7 @@ function renderList() {
     return `
     <button class="card ${n.id === S.currentId ? 'is-active' : ''}" data-id="${esc(n.id)}" role="option" aria-selected="${n.id === S.currentId}">
       <div class="card-main">
-        <div class="card-title">${n.pinned && S.view.kind !== 'pinned' ? `<span class="card-pin">${icon('star', 12)}</span>` : ''}${esc(n.title || 'Untitled')}</div>
+        <div class="card-title">${esc(n.title || 'Untitled')}</div>
         <div class="card-snippet">${snippet ? esc(snippet) : '<span class="muted">No additional text</span>'}</div>
         <div class="card-meta"><span>${relTime(S.view.kind === 'trash' ? n.trashed : n.updated)}</span>${showNb && nb ? `<span class="dot"></span><span>${esc(nb.name)}</span>` : ''}${n.tags.slice(0, 2).map((t) => `<span class="chip">${esc(t)}</span>`).join('')}</div>
       </div>
@@ -504,11 +491,6 @@ function renderHead() {
   const n = current();
   if (!n) return;
   $('#nbName').textContent = S.notebooks.get(n.notebookId)?.name || 'No notebook';
-  const pin = $('#pinBtn');
-  pin.classList.toggle('is-active', !!n.pinned);
-  pin.title = n.pinned ? 'Remove from shortcuts' : 'Add to shortcuts';
-  pin.setAttribute('aria-pressed', !!n.pinned);
-  pin.hidden = !!n.trashed;
   $('#nbPicker').disabled = !!n.trashed;
 }
 
@@ -557,7 +539,7 @@ async function newNote({ title = '', html = '', notebookId } = {}) {
   const now = Date.now();
   const n = {
     id: store.uid('n'), notebookId: nbId, title, content: html, text: html ? io.htmlToText(html) : '',
-    tags: S.view.kind === 'tag' ? [S.view.tag] : [], pinned: S.view.kind === 'pinned', created: now, updated: now, trashed: null,
+    tags: S.view.kind === 'tag' ? [S.view.tag] : [], pinned: false, created: now, updated: now, trashed: null,
   };
   S.notes.set(n.id, n);
   store.saveNote(n); // fire-and-forget: UI must respond instantly so no keystrokes are lost
@@ -620,13 +602,6 @@ async function emptyTrash() {
   if (!ok) return;
   for (const n of trashed) { S.notes.delete(n.id); await store.deleteNote(n.id); }
   renderNav(); renderList(); openNote(null);
-}
-function togglePin(n) {
-  n.pinned = !n.pinned;
-  n.updated = Date.now();
-  store.saveNote(n);
-  renderHead(); renderNav(); renderList();
-  toast(n.pinned ? 'Added to Shortcuts' : 'Removed from Shortcuts');
 }
 function moveNote(n, nbId) {
   if (n.notebookId === nbId) return;
@@ -767,7 +742,6 @@ function noteMenu(anchor, n, opts) {
     return;
   }
   openMenu(anchor, [
-    { label: n.pinned ? 'Remove from Shortcuts' : 'Add to Shortcuts', icon: 'star', onClick: () => togglePin(n) },
     { label: 'Move to', icon: 'move', sub: true, onClick: () => moveMenu(anchor, n) },
     { label: 'Duplicate', icon: 'copy', onClick: () => duplicateNote(n) },
     '-',
@@ -849,7 +823,6 @@ function openPalette() {
     { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: showShortcuts },
     { label: 'Go to Home', icon: 'home', run: () => setView({ kind: 'home' }) },
     { label: 'Go to Trash', icon: 'trash', run: () => setView({ kind: 'trash' }) },
-    { label: 'Go to Shortcuts', icon: 'star', run: () => setView({ kind: 'pinned' }) },
   ];
 
   const snippetAround = (text, terms) => {
@@ -905,7 +878,7 @@ function openPalette() {
     results.innerHTML = items.map((it, i) => {
       if (it.section) return `<div class="pal-section">${esc(it.section)}</div>`;
       if (it.note) return `<button class="pal-item ${i === sel ? 'is-sel' : ''}" data-i="${i}" role="option">
-        <span class="pal-ic">${icon(it.note.pinned ? 'star' : 'notes', 16)}</span>
+        <span class="pal-ic">${icon('notes', 16)}</span>
         <span class="pal-text"><span class="pal-title">${it.html}</span>${it.snippet ? `<span class="pal-snippet">${it.snippet}</span>` : ''}</span>
         <span class="pal-hint">${esc(it.sub || '')}</span></button>`;
       return `<button class="pal-item ${i === sel ? 'is-sel' : ''}" data-i="${i}" role="option">
