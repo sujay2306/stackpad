@@ -772,10 +772,7 @@ function templateMenu(anchor) {
   ]);
 }
 // Colour palettes: [id, name, light swatch, dark swatch]. Tokens live in styles/palettes.css. No data-palette = Notes.
-const PALETTES = [['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4'], ['evernote', 'Evernote', '#008523', '#008523'], ['aloe', 'Aloe', '#146C43', '#52CD86'], ['teal', 'Teal', '#006965', '#0DCBC3'], ['ocean', 'Ocean', '#0B618F', '#51BCFF'],
-  ['iris', 'Iris', '#565193', '#A9A5FF'], ['plum', 'Plum', '#7B4477', '#EC86E4'], ['rose', 'Rose', '#8E3958', '#FF83AD'],
-  ['coral', 'Coral', '#8C4234', '#FF8C76'], ['mango', 'Mango', '#8A4605', '#FF9137'], ['sand', 'Sand', '#755423', '#DAA75D'],
-  ['lime', 'Lime', '#486611', '#8EC620'], ['mono', 'Mono', '#2B2D31', '#E8E8E8']];
+const PALETTES = [['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4'], ['evernote', 'Evernote', '#008523', '#008523']];
 function themeMenu(anchor) {
   const cur = localStorage.getItem('stackpad-theme') || 'system';
   const m = openMenu(anchor, [
