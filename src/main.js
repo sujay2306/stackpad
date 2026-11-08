@@ -12,6 +12,7 @@ import { TEMPLATES } from './templates.js';
 import { seedData } from './seed.js';
 import * as sync from './sync.js';
 import { icon, LOGO } from './icons.js';
+import { createToday, isDayId } from './today.js';
 import { initPWA, mountInstallLine, takeLaunchAction } from './pwa.js';
 
 const APP = 'Stackpad';
@@ -56,6 +57,7 @@ const pending = new Map(); // noteId -> timer
 let api = null; // editor api
 let suppressChange = false;
 let booting = true;
+let today = null; // Today page controller (today.js)
 
 // ---------- persistence ----------
 function queueSave(note) {
@@ -97,7 +99,7 @@ function allTags() {
 function defaultNotebookId() {
   if (S.view.kind === 'notebook' && S.notebooks.has(S.view.id)) return S.view.id;
   const cur = S.notes.get(S.currentId);
-  if (cur && S.notebooks.has(cur.notebookId)) return cur.notebookId;
+  if (cur && S.notebooks.has(cur.notebookId) && !isDayId(cur.id)) return cur.notebookId;
   return notebookList()[0]?.id;
 }
 function notesInView(v = S.view) {
@@ -107,6 +109,7 @@ function notesInView(v = S.view) {
     arr = arr.filter((n) => !n.trashed);
     if (v.kind === 'notebook') arr = arr.filter((n) => n.notebookId === v.id);
     if (v.kind === 'tag') arr = arr.filter((n) => n.tags.includes(v.tag));
+    if (v.kind === 'today') arr = arr.filter((n) => n.notebookId === today.journalId());
   }
   const by = {
     updated: (a, b) => b.updated - a.updated,
@@ -121,6 +124,7 @@ function viewTitle(v = S.view) {
   if (v.kind === 'trash') return 'Trash';
   if (v.kind === 'notebook') return S.notebooks.get(v.id)?.name || 'Notebook';
   if (v.kind === 'tag') return `#${v.tag}`;
+  if (v.kind === 'today') return 'Journal';
 }
 const sameView = (a, b) => a.kind === b.kind && a.id === b.id && a.tag === b.tag;
 const firstImage = (html) => (html || '').match(/<img[^>]+src="([^"]+)"/)?.[1];
@@ -236,18 +240,24 @@ function mountShell() {
   api = createEditor({
     element: $('#editor'),
     toolbar: $('#toolbar'),
+    placeholder: () => today?.placeholder(),
     onChange: (editor) => {
       if (suppressChange) return;
-      const n = current();
+      const n = current() || today.materialize(); // a virtual day page becomes real on the first keystroke
       if (!n || n.trashed) return;
       n.content = editor.getHTML();
       n.text = editor.getText({ blockSeparator: '\n' });
       touch(n);
+      today.changed(n);
     },
     onImage: async (file) => {
       try { return await io.compressImage(file); }
       catch (err) { toast(err?.message || 'That file could not be added.'); throw err; }
     },
+  });
+  today = createToday({
+    S, api: () => api, openNote, touch, toast, setPane, flushNote, pending, renderNav, renderList, renderHead, renderTags, renderFooter,
+    saveNote: store.saveNote, saveNotebook: store.saveNotebook,
   });
 }
 
@@ -268,6 +278,7 @@ function renderNav() {
   const tags = allTags();
   $('#nav').innerHTML = `
     ${item({ kind: 'home' }, 'home', 'Home', '')}
+    ${item({ kind: 'today' }, 'calendar', 'Today', '')}
     ${item({ kind: 'all' }, 'notes', 'Notes', live.length)}
     <div class="nav-section"><span>Notebooks</span><button class="mini-btn" id="addNotebook" aria-label="New notebook" title="New notebook">${icon('plus', 15)}</button></div>
     ${nbs.map((nb) => item({ kind: 'notebook', id: nb.id }, 'book', nb.name, counts.get(nb.id) || 0, `<span class="nav-more" data-nb="${esc(nb.id)}" role="button" aria-label="Notebook options">${icon('more', 15)}</span>`)).join('')}
@@ -300,6 +311,7 @@ function springNavPill() {
 }
 
 function setView(v, { keepNote = false } = {}) {
+  if (v.kind === 'today') { today.open(v.date); return; }
   S.view = v;
   $('#shell').classList.toggle('is-home', v.kind === 'home');
   if (v.kind === 'home') { renderNav(); springNavPill(); renderHome(); setPane('list'); focusCapture(); return; }
@@ -493,6 +505,7 @@ function renderList() {
       trash: ['Trash is empty', 'Deleted notes wait here until you clear them.'],
       notebook: ['This notebook is empty', 'Add a page to get started.'],
       tag: ['Nothing tagged', 'Notes with this tag will show up here.'],
+      today: ['No daily pages yet', 'Write on Today and each day is kept here.'],
     }[S.view.kind];
     body.innerHTML = `<div class="list-empty"><h4>${msg[0]}</h4><p>${msg[1]}</p>${S.view.kind !== 'trash' ? `<button class="btn-quiet" id="listEmptyNew">${icon('plus', 15)} New note</button>` : ''}</div>`;
     $('#listEmptyNew')?.addEventListener('click', () => newNote());
@@ -542,6 +555,8 @@ function openNote(id, { stay = false } = {}) {
   const prev = S.currentId;
   if (prev && pending.has(prev)) flushNote(prev);
   S.currentId = id;
+  today.clearVirtual();
+  today.paint();
   const n = current();
   $('#editorPane').classList.toggle('is-empty', !n);
   $$('#listBody .card').forEach((c) => { const on = c.dataset.id === id; c.classList.toggle('is-active', on); c.setAttribute('aria-selected', on); });
@@ -560,6 +575,7 @@ function openNote(id, { stay = false } = {}) {
   renderHead();
   renderTags();
   renderFooter();
+  today.paint();
   store.setSetting('lastNote', id);
 }
 
@@ -610,6 +626,7 @@ function renderTags() {
 // ---------- note operations ----------
 async function newNote({ title = '', html = '', notebookId } = {}) {
   leaveHome();
+  if (S.view.kind === 'today') S.view = { kind: 'all' };
   let nbId = notebookId || defaultNotebookId();
   if (!nbId) nbId = (await makeNotebook('Personal')).id;
   const now = Date.now();
@@ -912,6 +929,7 @@ function openPalette() {
 
   const actions = [
     { label: 'New note', icon: 'plus', hint: `${ALT}N`, run: () => newNote() },
+    { label: 'Open Today', icon: 'calendar', hint: `${ALT}T`, run: () => today.open() },
     { label: 'New notebook', icon: 'book', run: createNotebook },
     ...TEMPLATES.map((t) => ({ label: `New from template: ${t.name}`, icon: t.icon, run: () => newNote({ title: t.title(), html: t.html() }) })),
     { label: 'Toggle dark mode', icon: 'moon', run: () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark') },
@@ -944,7 +962,7 @@ function openPalette() {
     if (!terms.length) {
       const recent = liveNotes().sort((a, b) => b.updated - a.updated).slice(0, 6);
       if (recent.length) items.push({ section: 'Recent' }, ...recent.map((n) => ({ note: n, html: esc(n.title || 'Untitled'), sub: S.notebooks.get(n.notebookId)?.name })));
-      items.push({ section: 'Actions' }, ...actions.slice(0, 2).concat(actions.slice(-5)).map((a) => ({ action: a })));
+      items.push({ section: 'Actions' }, ...actions.slice(0, 3).concat(actions.slice(-5)).map((a) => ({ action: a })));
     } else {
       const scored = [];
       for (const n of liveNotes()) {
@@ -1018,7 +1036,7 @@ function openPalette() {
 
 function showShortcuts() {
   const rows = [
-    ['Search everything', `${MOD}K`], ['New note', `${ALT}N`], ['Focus mode', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}F`], ['Insert a block', '/'],
+    ['Search everything', `${MOD}K`], ['New note', `${ALT}N`], ['Today', `${ALT}T`], ['Focus mode', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}F`], ['Insert a block', '/'],
     ['Bold / Italic / Underline', `${MOD}B  ${MOD}I  ${MOD}U`], ['Highlight', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}H`],
     ['Heading 1 / 2 / 3', `${MOD}${ALT}1  2  3`], ['Checklist', `[ ] then space`], ['Bulleted / Numbered list', '-  or  1.'],
     ['Quote / Code block', '>   or   ```'], ['Undo / Redo', `${MOD}Z  ${MOD}${IS_MAC ? '⇧' : 'Shift+'}Z`], ['Show this panel', '?'],
@@ -1118,6 +1136,7 @@ document.addEventListener('keydown', (e) => {
   const mod = IS_MAC ? e.metaKey : e.ctrlKey;
   if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); $('.palette-backdrop') ? null : openPalette(); return; }
   if (e.altKey && !mod && e.code === 'KeyN') { e.preventDefault(); newNote(); return; }
+  if (e.altKey && !mod && e.code === 'KeyT') { e.preventDefault(); today.open(); return; }
   if (mod && e.shiftKey && e.code === 'KeyF') { e.preventDefault(); toggleFocus(); return; }
   if (mod && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); flushAll().then(() => toast('All changes saved')); return; }
   if (e.key === 'Escape' && S.focus && !$('.modal-backdrop,.palette-backdrop,.menu')) { toggleFocus(); return; }
@@ -1134,6 +1153,7 @@ function applyRemote({ kind, op, id, value }) {
   if (kind === 'note') {
     if (pending.has(id)) return; // local edits win
     if (op === 'delete') S.notes.delete(id); else if (value) S.notes.set(id, value);
+    today.onRemote(id);
     if (id === S.currentId) {
       if (op === 'delete' || !value) openNote(null, { stay: true });
       else if (!$('#editor').contains(document.activeElement) && document.activeElement !== $('#title')) openNote(id, { stay: true });
@@ -1184,6 +1204,12 @@ async function boot() {
   if (!S.firstNoteAt && [...S.notes.keys()].every((id) => id.startsWith('seed-'))) $('#capture').placeholder = "What's on your mind? Start typing.";
   setView({ kind: 'home' }, { keepNote: true });
   markHomeReady();
+  const params = new URLSearchParams(location.search);
+  if (params.has('today')) {
+    today.open();
+    params.delete('today');
+    history.replaceState(null, '', location.pathname + (params.size ? `?${params}` : '') + location.hash);
+  }
   store.onRemoteChange(applyRemote);
   store.requestPersistence();
   if (!S.persistent) toast('Private browsing: notes will not be kept after this tab closes. Export a backup to keep them.');

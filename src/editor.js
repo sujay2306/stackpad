@@ -384,7 +384,7 @@ class SlashMenuView {
 
 /* ---------- main factory ---------- */
 
-export function createEditor({ element, toolbar, onChange, onImage } = {}) {
+export function createEditor({ element, toolbar, onChange, onImage, placeholder } = {}) {
   const toImage = async (file) => (onImage ? onImage(file) : readAsDataURL(file));
   const pending = new Set(); // positions awaiting async image inserts (mapped through edits)
   let destroyed = false;
@@ -488,7 +488,7 @@ export function createEditor({ element, toolbar, onChange, onImage } = {}) {
         includeChildren: false,
         placeholder: ({ editor: ed, node }) => {
           if (node.type.name === 'heading') return 'Heading';
-          if (ed.isEmpty) return 'Start writing, or type / for blocks';
+          if (ed.isEmpty) return placeholder?.() || 'Start writing, or type / for blocks';
           return 'Type / for blocks';
         },
       }),
