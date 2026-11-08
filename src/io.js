@@ -1,4 +1,4 @@
-// Notewell import/export helpers: Markdown <-> TipTap HTML, standalone HTML
+// Stackpad import/export helpers: Markdown <-> TipTap HTML, standalone HTML
 // export, downloads, image compression and JSON backups.
 
 import TurndownService from 'turndown';
@@ -205,7 +205,7 @@ export function htmlToMarkdown(html) {
   try {
     return getTurndown().turndown(html).replace(/\n{3,}/g, '\n\n').trim() + '\n';
   } catch (err) {
-    console.warn('[notewell/io] htmlToMarkdown failed:', err);
+    console.warn('[stackpad/io] htmlToMarkdown failed:', err);
     return htmlToText(html) + '\n';
   }
 }
@@ -340,7 +340,7 @@ export function markdownToHtml(md) {
   try {
     html = getMarked().parse(String(md));
   } catch (err) {
-    console.warn('[notewell/io] markdown parse failed:', err);
+    console.warn('[stackpad/io] markdown parse failed:', err);
     return `<p>${escapeHtml(String(md))}</p>`;
   }
   if (typeof DOMParser === 'undefined') return html;
@@ -459,7 +459,7 @@ export function noteToHtmlDocument(note) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="generator" content="Notewell">
+<meta name="generator" content="Stackpad">
 <title>${escapeHtml(title)}</title>
 <style>
 ${EXPORT_CSS}
@@ -494,7 +494,7 @@ export function download(filename, content, mime = 'text/plain') {
     // Revoking synchronously can cancel the download in some browsers.
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
   } catch (err) {
-    console.warn('[notewell/io] download failed:', err);
+    console.warn('[stackpad/io] download failed:', err);
   }
 }
 
@@ -615,7 +615,7 @@ export async function readFileText(file) {
 
 export function makeBackup({ notes = [], notebooks = [] } = {}) {
   return JSON.stringify({
-    app: 'notewell',
+    app: 'stackpad',
     version: 1,
     exportedAt: new Date().toISOString(),
     notebooks,
@@ -660,18 +660,18 @@ export function parseBackup(text) {
   try {
     data = JSON.parse(typeof text === 'string' ? text.replace(/^﻿/, '') : text);
   } catch {
-    throw new Error("This file isn't a valid Notewell backup (it isn't JSON).");
+    throw new Error("This file isn't a valid Stackpad backup (it isn't JSON).");
   }
-  if (!isObj(data)) throw new Error("This file isn't an Notewell backup.");
-  if (data.app != null && data.app !== 'notewell') {
+  if (!isObj(data)) throw new Error("This file isn't an Stackpad backup.");
+  if (data.app != null && data.app !== 'stackpad') {
     throw new Error(`This backup was made by a different app (“${str(data.app).slice(0, 40)}”).`);
   }
   const version = Number(data.version ?? 1);
   if (Number.isFinite(version) && version > 1) {
-    throw new Error('This backup was made by a newer version of Notewell. Please update and try again.');
+    throw new Error('This backup was made by a newer version of Stackpad. Please update and try again.');
   }
   if (!Array.isArray(data.notes) && !Array.isArray(data.notebooks)) {
-    throw new Error("This file doesn't contain any Notewell notes or notebooks.");
+    throw new Error("This file doesn't contain any Stackpad notes or notebooks.");
   }
 
   const now = Date.now();

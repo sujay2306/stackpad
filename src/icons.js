@@ -52,6 +52,7 @@ const P = {
   keyboard: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/>',
   file: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',
   calendar: '<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/><path d="M10 20v-5h4v5"/>',
   monitor: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
 };
 
@@ -59,4 +60,4 @@ export function icon(name, size = 18, cls = '') {
   return `<svg class="ic ${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 }
 
-export const LOGO = `<svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--ink)"/><path d="M19.5 7.5c-4.6 2.6-8.1 7.4-9.4 13.2l-.6 3.8 3.2-2.2c4.8-3.4 7.6-8.6 8-14.6z" fill="var(--accent)"/><path d="M11 23.5c2.8-4.6 5.4-8.2 8-11" stroke="var(--ink)" stroke-width="1.4" stroke-linecap="round"/></svg>`;
+export const LOGO = `<svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#13874A"/><rect x="9" y="6.5" width="15" height="11" rx="2.5" fill="#fff" opacity=".45"/><rect x="7.5" y="10" width="17" height="12" rx="2.5" fill="#fff" opacity=".7"/><rect x="6" y="13.5" width="20" height="12.5" rx="2.8" fill="#fff"/><path d="M10 18.5h9M10 22h6" stroke="#13874A" stroke-width="1.8" stroke-linecap="round"/></svg>`;

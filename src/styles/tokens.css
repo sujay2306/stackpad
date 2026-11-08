@@ -1,4 +1,4 @@
-/* Notewell — design tokens + base reset
+/* Stackpad — design tokens + base reset
    "Every thought, kept."  Warm paper, ink, and a single amber accent. */
 
 :root,
@@ -17,10 +17,10 @@
   --text-2:      #5E5B55;  /* 6.6:1 on --bg */
   --text-3:      #8C887F;  /* 3.4:1 on --bg */
 
-  --accent:      #E3A33B;  /* notewell amber */
-  --accent-ink:  #1F1606;  /* text on accent fills (8.1:1) */
-  --accent-soft: #FBF0DC;
-  --accent-text: #946000;  /* 5.2:1 on --bg */
+  --accent:      #13874A;  /* stackpad green; white text 4.6:1 */
+  --accent-ink:  #FFFFFF;
+  --accent-soft: #E5F4EB;
+  --accent-text: #0F7A40;  /* 5.2:1 on --bg */
 
   --ink:         #1D1C1A;
   --ink-text:    #FDFCFA;  /* text on --ink fills */
@@ -51,10 +51,10 @@
   --text-2:      #A8A49C;  /* 7.4:1 on --bg */
   --text-3:      #7D7970;  /* 4.2:1 on --bg */
 
-  --accent:      #E8AC48;
-  --accent-ink:  #1F1606;  /* 8.9:1 */
-  --accent-soft: #3A2E17;
-  --accent-text: #EDB65A;  /* 9.9:1 on --bg */
+  --accent:      #13874A;
+  --accent-ink:  #FFFFFF;
+  --accent-soft: #15301F;
+  --accent-text: #4CC27E;
 
   --ink:         #ECEAE5;
   --ink-text:    #161513;

@@ -1,4 +1,4 @@
-/* Notewell — note page typography (.ProseMirror.prose) */
+/* Stackpad — note page typography (.ProseMirror.prose) */
 
 .prose {
   font-family: var(--font-sans);
@@ -225,7 +225,7 @@
 .prose ul[data-type="taskList"] > li input[type="checkbox"]:checked {
   background-color: var(--accent);
   border-color: var(--accent);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.3 4.7-5' fill='none' stroke='%231F1606' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.3l2.3 2.3 4.7-5' fill='none' stroke='%23FFFFFF' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 .prose ul[data-type="taskList"] > li input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--accent-text);

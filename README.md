@@ -1,6 +1,6 @@
-# Notewell
+# Stackpad
 
-**Every thought, kept.** A calm, fast notebook for the web: notebooks, rich pages, checklists, tags and instant search. Free, private and offline-first, with no sign-up.
+**Notes, stacked and searchable.** A calm, fast notebook for the web: notebooks, rich pages, checklists, tags and instant search. Free, private and offline-first, with no sign-up.
 
 ## Features
 

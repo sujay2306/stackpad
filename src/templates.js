@@ -1,4 +1,4 @@
-// Notewell note templates.
+// Stackpad note templates.
 // Each template returns TipTap-compatible HTML. The note title is separate,
 // so bodies never start with an h1.
 

@@ -1,12 +1,12 @@
-# Notewell — Product Requirements (v1)
+# Stackpad — Product Requirements (v1)
 
-**Tagline:** Every thought, kept.
+**Tagline:** Notes, stacked and searchable.
 **Status:** v1 shipped (local-first web app) · **Host:** getsudo.in
 **Last updated:** 8 Nov 2026
 
 ## 1. Vision
 
-A calm, fast notebook that opens instantly, works offline and never asks you to sign up before you can write. Notewell should feel premium and quiet: Apple-minimal surfaces, crisp type, no clutter. You capture first and organise later, and nothing is ever lost.
+A calm, fast notebook that opens instantly, works offline and never asks you to sign up before you can write. Stackpad should feel premium and quiet: Apple-minimal surfaces, crisp type, no clutter. You capture first and organise later, and nothing is ever lost.
 
 ## 2. Problem
 

@@ -1,6 +1,6 @@
-# Notewell design system
+# Stackpad design system
 
-"Every thought, kept." Warm paper, dark ink, one amber accent. Tokens: `src/styles/tokens.css`; note typography: `src/styles/prose.css`.
+"Notes, stacked and searchable." Warm paper, dark ink, one amber accent. Tokens: `src/styles/tokens.css`; note typography: `src/styles/prose.css`.
 
 ## Principles
 1. **Writing first.** The page is the product. Chrome recedes; the note gets the space.

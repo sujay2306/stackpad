@@ -1,6 +1,6 @@
-// Notewell persistence layer.
+// Stackpad persistence layer.
 //
-// IndexedDB ('notewell' v1) with three object stores:
+// IndexedDB ('stackpad' v1) with three object stores:
 //   notes      keyPath 'id'
 //   notebooks  keyPath 'id'
 //   settings   out-of-line keys
@@ -26,7 +26,7 @@
 
 import { openDB } from 'idb';
 
-const DB_NAME = 'notewell';
+const DB_NAME = 'stackpad';
 const DB_VERSION = 1;
 const OPEN_TIMEOUT_MS = 5000; // Safari has shipped versions where open() never settles.
 
@@ -68,7 +68,7 @@ let db = null;          // open IDBPDatabase, or null
 let dbPromise = null;   // in-flight / settled open attempt
 let memoryOnly = false; // true once we've decided IDB is unusable for this session
 
-const warn = (...args) => console.warn('[notewell/store]', ...args);
+const warn = (...args) => console.warn('[stackpad/store]', ...args);
 
 function withTimeout(promise, ms) {
   let timer;
@@ -152,7 +152,7 @@ function getChannel() {
   if (channel) return channel;
   if (typeof BroadcastChannel === 'undefined') return null;
   try {
-    channel = new BroadcastChannel('notewell');
+    channel = new BroadcastChannel('stackpad');
     channel.onmessage = (event) => {
       const msg = event && event.data;
       if (!msg || (msg.kind !== 'note' && msg.kind !== 'notebook') || typeof msg.id !== 'string') return;

@@ -1,4 +1,4 @@
-// First-launch content for Notewell.
+// First-launch content for Stackpad.
 
 const MIN = 60 * 1000;
 
@@ -25,7 +25,7 @@ const tr = (cells, tag = 'td') =>
   `<tr>${cells.map((c) => `<${tag}><p>${c}</p></${tag}>`).join('')}</tr>`;
 
 const WELCOME = `
-<p>Notewell is a quiet place for everything on your mind. Notes, plans, code snippets and half-formed ideas, all <mark>kept in one calm space</mark>.</p>
+<p>Stackpad is a quiet place for everything on your mind. Notes, plans, code snippets and half-formed ideas, all <mark>kept in one calm space</mark>.</p>
 <p>Every note is saved privately in this browser. No account, no sign-in. To move your notes to another device, use <strong>Export backup</strong> and import it there.</p>
 <h2>Things to try</h2>
 <ul data-type="taskList">
@@ -62,14 +62,14 @@ ${tr(['Insert block', '/', '/'])}
 <h2>Made for code, too</h2>
 <p>Type three backticks to start a code block:</p>
 <pre><code>function greet(name) {
-  return \`Hello, \${name}. Welcome to Notewell.\`;
+  return \`Hello, \${name}. Welcome to Stackpad.\`;
 }</code></pre>
 <hr>
 <p><em>Ready? Create your first note with the New note button, or press</em> <code>/</code> <em>right here and start writing.</em></p>
 `;
 
 const MARKDOWN = `
-<p>Type these at the start of a line and Notewell formats as you go. Inline styles apply when you close the marks.</p>
+<p>Type these at the start of a line and Stackpad formats as you go. Inline styles apply when you close the marks.</p>
 <h2>Blocks</h2>
 <table><tbody>
 ${tr(['Type', 'You get'], 'th')}
@@ -141,8 +141,8 @@ export function seedData(uid) {
   };
 
   const notes = [
-    note(gettingStarted.id, 'Welcome to Notewell', WELCOME, ['notewell'], 0, true),
-    note(gettingStarted.id, 'Markdown shortcuts', MARKDOWN, ['notewell', 'reference'], 4),
+    note(gettingStarted.id, 'Welcome to Stackpad', WELCOME, ['stackpad'], 0, true),
+    note(gettingStarted.id, 'Markdown shortcuts', MARKDOWN, ['stackpad', 'reference'], 4),
     note(personal.id, 'Weekend plan', WEEKEND, ['plans'], 12),
     note(personal.id, 'Ideas', IDEAS, ['ideas'], 27),
   ];

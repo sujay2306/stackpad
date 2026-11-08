@@ -1,4 +1,4 @@
-// Notewell app shell: layout, navigation, notebooks, note list, search palette, menus and autosave.
+// Stackpad app shell: layout, navigation, notebooks, note list, search palette, menus and autosave.
 import './styles/tokens.css';
 import './styles/prose.css';
 import './styles/editor-ui.css';
@@ -11,7 +11,7 @@ import { TEMPLATES } from './templates.js';
 import { seedData } from './seed.js';
 import { icon, LOGO } from './icons.js';
 
-const APP = 'Notewell';
+const APP = 'Stackpad';
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 const MOD = IS_MAC ? '⌘' : 'Ctrl+';
 const ALT = IS_MAC ? '⌥' : 'Alt+';
@@ -52,6 +52,7 @@ const S = {
 const pending = new Map(); // noteId -> timer
 let api = null; // editor api
 let suppressChange = false;
+let booting = true;
 
 // ---------- persistence ----------
 function queueSave(note) {
@@ -114,7 +115,7 @@ function notesInView(v = S.view) {
   return arr.sort(by);
 }
 function viewTitle(v = S.view) {
-  if (v.kind === 'all') return 'Notes';
+  if (v.kind === 'all' || v.kind === 'home') return 'Notes';
   if (v.kind === 'pinned') return 'Shortcuts';
   if (v.kind === 'trash') return 'Trash';
   if (v.kind === 'notebook') return S.notebooks.get(v.id)?.name || 'Notebook';
@@ -186,6 +187,7 @@ function mountShell() {
         <div class="empty-keys"><span><kbd>${ALT}N</kbd> new note</span><span><kbd>${MOD}K</kbd> search</span><span><kbd>/</kbd> blocks</span></div>
       </div>
     </main>
+    <section class="home" id="home" aria-label="Home"></section>
   </div>
   <input type="file" id="importInput" accept=".json,.md,.markdown,.txt,.html,.htm" multiple hidden>`;
 
@@ -262,6 +264,7 @@ function renderNav() {
   const nbs = notebookList();
   const tags = allTags();
   $('#nav').innerHTML = `
+    ${item({ kind: 'home' }, 'home', 'Home', '')}
     ${item({ kind: 'all' }, 'notes', 'Notes', live.length)}
     ${item({ kind: 'pinned' }, 'star', 'Shortcuts', live.filter((n) => n.pinned).length)}
     <div class="nav-section"><span>Notebooks</span><button class="mini-btn" id="addNotebook" aria-label="New notebook" title="New notebook">${icon('plus', 15)}</button></div>
@@ -288,6 +291,8 @@ function renderNav() {
 
 function setView(v, { keepNote = false } = {}) {
   S.view = v;
+  $('#shell').classList.toggle('is-home', v.kind === 'home');
+  if (v.kind === 'home') { renderNav(); renderHome(); setPane('list'); return; }
   renderNav();
   renderList();
   setPane('list');
@@ -299,11 +304,115 @@ function setView(v, { keepNote = false } = {}) {
   }
 }
 
+// ---------- home dashboard ----------
+function openTasks() {
+  const out = [];
+  const parser = new DOMParser();
+  for (const n of liveNotes().sort((a, b) => b.updated - a.updated)) {
+    if (!n.content || !n.content.includes('taskList')) continue;
+    const doc = parser.parseFromString(n.content, 'text/html');
+    doc.querySelectorAll('ul[data-type="taskList"] > li[data-checked="false"]').forEach((li) => {
+      const t = (li.querySelector(':scope > div > p') || li).textContent.trim();
+      if (t) out.push({ text: t, note: n });
+    });
+    if (out.length >= 40) break;
+  }
+  return out;
+}
+let scratchTimer;
+function renderHome() {
+  const home = $('#home');
+  const h = new Date().getHours();
+  const greet = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  const recent = liveNotes().sort((a, b) => b.updated - a.updated).slice(0, 10);
+  const pinned = liveNotes().filter((n) => n.pinned).sort((a, b) => b.updated - a.updated).slice(0, 6);
+  const tasks = openTasks();
+  const nbName = (n) => esc(S.notebooks.get(n.notebookId)?.name || '');
+  home.innerHTML = `
+    <div class="home-inner">
+      <header class="home-hero">
+        <button class="icon-btn only-mobile" id="homeToNav" aria-label="Open navigation">${icon('menu')}</button>
+        <div>
+          <p class="home-date">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+          <h1>${greet}</h1>
+        </div>
+        <span class="grow"></span>
+        <button class="btn-primary home-new" id="homeNew">${icon('plus', 16)} New note</button>
+      </header>
+
+      <section class="widget widget-recent">
+        <div class="widget-head"><h2>Recent notes</h2><button class="link-btn" id="homeAll">View all ${icon('chevronRight', 14)}</button></div>
+        <div class="recent-row">
+          ${recent.map((n) => {
+            const img = firstImage(n.content);
+            return `<button class="recent-card" data-id="${esc(n.id)}">
+              <span class="rc-title">${esc(n.title || 'Untitled')}</span>
+              ${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span class="rc-snippet">${esc((n.text || '').replace(/\s+/g, ' ').slice(0, 140))}</span>`}
+              <span class="rc-meta">${relTime(n.updated)}</span>
+            </button>`;
+          }).join('')}
+          <button class="recent-card recent-new" id="homeNew2">${icon('plus', 22)}<span>Create new note</span></button>
+        </div>
+      </section>
+
+      <div class="widget-grid">
+        <section class="widget">
+          <div class="widget-head"><h2>Scratch pad</h2><button class="link-btn" id="scratchSave" ${S.scratch?.trim() ? '' : 'disabled'}>Save as note</button></div>
+          <textarea class="scratch" id="scratch" placeholder="Jot something down. It stays here until you save it as a note.">${esc(S.scratch || '')}</textarea>
+        </section>
+
+        <section class="widget">
+          <div class="widget-head"><h2>Open tasks</h2><span class="widget-count">${tasks.length}</span></div>
+          ${tasks.length ? `<ul class="task-list">${tasks.slice(0, 8).map((t) => `
+            <li><button data-id="${esc(t.note.id)}"><span class="tl-box"></span><span class="tl-text">${esc(t.text)}</span><span class="tl-note">${esc(t.note.title || 'Untitled')}</span></button></li>`).join('')}</ul>`
+          : `<p class="widget-empty">No open tasks. Type <kbd>[ ]</kbd> in any note to add one.</p>`}
+        </section>
+
+        <section class="widget">
+          <div class="widget-head"><h2>Shortcuts</h2><span class="widget-count">${pinned.length}</span></div>
+          ${pinned.length ? `<ul class="pin-list">${pinned.map((n) => `
+            <li><button data-id="${esc(n.id)}">${icon('star', 15)}<span>${esc(n.title || 'Untitled')}</span><span class="pl-nb">${nbName(n)}</span></button></li>`).join('')}</ul>`
+          : `<p class="widget-empty">Star a note to keep it one click away.</p>`}
+        </section>
+
+        <section class="widget">
+          <div class="widget-head"><h2>Notebooks</h2><button class="link-btn" id="homeNb">${icon('plus', 14)} New</button></div>
+          <ul class="pin-list">${notebookList().map((nb) => `
+            <li><button data-nb="${esc(nb.id)}">${icon('book', 15)}<span>${esc(nb.name)}</span><span class="pl-nb">${liveNotes().filter((n) => n.notebookId === nb.id).length}</span></button></li>`).join('')}</ul>
+        </section>
+      </div>
+    </div>`;
+  const open = (id) => { openNote(id); setPane('editor'); };
+  $$('[data-id]', home).forEach((b) => (b.onclick = () => open(b.dataset.id)));
+  $$('[data-nb]', home).forEach((b) => (b.onclick = () => setView({ kind: 'notebook', id: b.dataset.nb })));
+  $('#homeNew').onclick = $('#homeNew2').onclick = () => newNote();
+  $('#homeAll').onclick = () => setView({ kind: 'all' });
+  $('#homeNb').onclick = createNotebook;
+  $('#homeToNav').onclick = () => setPane('nav');
+  const sc = $('#scratch'), save = $('#scratchSave');
+  sc.oninput = () => {
+    S.scratch = sc.value;
+    save.disabled = !sc.value.trim();
+    clearTimeout(scratchTimer);
+    scratchTimer = setTimeout(() => store.setSetting('scratch', S.scratch), 300);
+  };
+  save.onclick = () => {
+    const text = sc.value.trim();
+    if (!text) return;
+    const lines = text.split('\n');
+    const html = lines.slice(1).map((l) => `<p>${esc(l)}</p>`).join('') || '<p></p>';
+    S.scratch = '';
+    store.setSetting('scratch', '');
+    newNote({ title: lines[0].slice(0, 120), html });
+    toast('Scratch pad saved as a note');
+  };
+}
+
 // ---------- list ----------
 let listTimer = 0;
 function scheduleListRender() {
   if (listTimer) return;
-  listTimer = requestAnimationFrame(() => { listTimer = 0; renderList(); renderNav(); });
+  listTimer = requestAnimationFrame(() => { listTimer = 0; renderList(); renderNav(); if (S.view.kind === 'home') renderHome(); });
 }
 
 function renderList() {
@@ -357,7 +466,14 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- editor pane ----------
+function leaveHome() {
+  if (S.view.kind !== 'home') return;
+  S.view = { kind: 'all' };
+  $('#shell').classList.remove('is-home');
+  renderNav(); renderList();
+}
 function openNote(id) {
+  if (id && !booting) leaveHome();
   const prev = S.currentId;
   if (prev && pending.has(prev)) flushNote(prev);
   S.currentId = id;
@@ -433,6 +549,7 @@ function renderTags() {
 
 // ---------- note operations ----------
 async function newNote({ title = '', html = '', notebookId } = {}) {
+  leaveHome();
   let nbId = notebookId || defaultNotebookId();
   if (!nbId) nbId = (await makeNotebook('Personal')).id;
   const now = Date.now();
@@ -596,7 +713,7 @@ function templateMenu(anchor) {
   ]);
 }
 function themeMenu(anchor) {
-  const cur = localStorage.getItem('notewell-theme') || 'system';
+  const cur = localStorage.getItem('stackpad-theme') || 'system';
   openMenu(anchor, [
     { header: 'Appearance' },
     ...[['system', 'Match system', 'monitor'], ['light', 'Light', 'sun'], ['dark', 'Dark', 'moon']].map(([v, l, ic]) => ({ label: l, icon: ic, checked: cur === v, onClick: () => setTheme(v) })),
@@ -725,6 +842,7 @@ function openPalette() {
     { label: 'Export backup', icon: 'download', run: exportBackup },
     { label: 'Import notes', icon: 'upload', run: () => $('#importInput').click() },
     { label: 'Keyboard shortcuts', icon: 'keyboard', hint: '?', run: showShortcuts },
+    { label: 'Go to Home', icon: 'home', run: () => setView({ kind: 'home' }) },
     { label: 'Go to Trash', icon: 'trash', run: () => setView({ kind: 'trash' }) },
     { label: 'Go to Shortcuts', icon: 'star', run: () => setView({ kind: 'pinned' }) },
   ];
@@ -844,12 +962,12 @@ function showShortcuts() {
 // ---------- theme, focus, panes ----------
 const darkMQ = matchMedia('(prefers-color-scheme: dark)');
 function applyTheme() {
-  const pref = localStorage.getItem('notewell-theme') || 'system';
+  const pref = localStorage.getItem('stackpad-theme') || 'system';
   const t = pref === 'system' ? (darkMQ.matches ? 'dark' : 'light') : pref;
   document.documentElement.dataset.theme = t;
   $('#themeBtn') && ($('#themeBtn').innerHTML = icon(t === 'dark' ? 'moon' : 'sun', 17));
 }
-function setTheme(v) { try { localStorage.setItem('notewell-theme', v); } catch {} applyTheme(); }
+function setTheme(v) { try { localStorage.setItem('stackpad-theme', v); } catch {} applyTheme(); }
 darkMQ.addEventListener?.('change', applyTheme);
 
 function toggleFocus() {
@@ -867,7 +985,7 @@ function setPane(p) {
 // ---------- import / export ----------
 function exportBackup() {
   const d = new Date().toISOString().slice(0, 10);
-  io.download(`notewell-backup-${d}.json`, io.makeBackup({ notes: [...S.notes.values()], notebooks: [...S.notebooks.values()] }), 'application/json');
+  io.download(`stackpad-backup-${d}.json`, io.makeBackup({ notes: [...S.notes.values()], notebooks: [...S.notebooks.values()] }), 'application/json');
   toast(`Backup downloaded · ${plural(S.notes.size, 'note')}`);
 }
 
@@ -972,7 +1090,9 @@ async function boot() {
   const last = await store.getSetting('lastNote', null);
   const start = S.notes.get(last) && !S.notes.get(last).trashed ? last : notesInView()[0]?.id || null;
   openNote(start);
-  if (start && matchMedia('(max-width: 859px)').matches) setPane('list');
+  booting = false;
+  S.scratch = (await store.getSetting('scratch', '')) || '';
+  setView({ kind: 'home' }, { keepNote: true });
   store.onRemoteChange(applyRemote);
   store.requestPersistence();
   if (!S.persistent) toast('Private browsing: notes will not be kept after this tab closes. Export a backup to keep them.');

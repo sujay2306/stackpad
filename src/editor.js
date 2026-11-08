@@ -1,4 +1,4 @@
-// Notewell editor: TipTap setup, formatting toolbar, link popover and slash menu.
+// Stackpad editor: TipTap setup, formatting toolbar, link popover and slash menu.
 import { Editor, Extension } from '@tiptap/core';
 import { EditorState, Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
@@ -119,7 +119,7 @@ function currentBlock(editor) {
 
 /* ---------- slash menu plugin ---------- */
 
-const slashKey = new PluginKey('notewellSlash');
+const slashKey = new PluginKey('stackpadSlash');
 const SLASH_MAX_QUERY = 24;
 
 function fuzzyScore(query, item) {
@@ -175,7 +175,7 @@ function revalidate(state, from, items, prev) {
 
 function createSlashExtension(getItems, onSelect) {
   return Extension.create({
-    name: 'notewellSlash',
+    name: 'stackpadSlash',
     addProseMirrorPlugins() {
       const editor = this.editor;
       return [
