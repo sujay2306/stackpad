@@ -13,7 +13,7 @@ const longDate = () =>
     year: 'numeric',
   });
 
-const tasks = (items) =>
+export const tasks = (items) =>
   `<ul data-type="taskList">${items
     .map((t) => `<li data-type="taskItem" data-checked="false"><p>${t}</p></li>`)
     .join('')}</ul>`;
