@@ -50,7 +50,8 @@ end $$;
 create or replace function public.stackpad_insert() returns trigger
 language plpgsql as $$
 begin
-  new.user_id := auth.uid();
+  -- Signed-in clients always write as themselves; trusted server scripts (no JWT user) keep the given user_id.
+  new.user_id := coalesce(auth.uid(), new.user_id);
   new.synced_at := clock_timestamp();
   return new;
 end $$;
