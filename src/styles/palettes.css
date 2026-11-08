@@ -192,12 +192,12 @@
 /* Evernote: charcoal sidebar in both themes (scoped tokens above), green "+ New" pill,
    moderate 6-8px corners and the system font. */
 :root[data-palette="evernote"] {
-  --ev-green: #008523;
+  --ev-green: #00A82D;
   --radius-xs: 4px; --radius-sm: 6px; --radius: 8px; --radius-lg: 12px; --radius-press: 6px;
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
 }
-:root[data-palette="evernote"] .sidebar .btn-new { background: var(--ev-green); color: #FFFFFF; border-radius: var(--radius-full); }
-:root[data-palette="evernote"] .sidebar .btn-new:hover { background: color-mix(in srgb, #FFFFFF 8%, var(--ev-green)); }
+:root[data-palette="evernote"] .sidebar .btn-new { background: var(--ev-green); color: #0B1F12; border-radius: var(--radius-full); }
+:root[data-palette="evernote"] .sidebar .btn-new:hover { background: color-mix(in srgb, #000000 8%, var(--ev-green)); }
 :root[data-palette="evernote"] .sidebar .nav-item.is-active svg { color: var(--ev-icon); }
 :root[data-palette="evernote"] .sidebar .brand { color: var(--text); }
 :root[data-palette="evernote"] .sidebar .signin-btn svg { color: var(--ev-icon); }
