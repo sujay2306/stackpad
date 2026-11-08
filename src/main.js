@@ -288,11 +288,20 @@ function renderNav() {
   $('#addNotebook').onclick = createNotebook;
 }
 
+// Play the nav pill spring once per view change (renderNav rebuilds the items already active)
+function springNavPill() {
+  const a = $('.nav-item.is-active');
+  if (!a) return;
+  a.classList.add('is-entering');
+  a.addEventListener('animationend', () => a.classList.remove('is-entering'), { once: true });
+}
+
 function setView(v, { keepNote = false } = {}) {
   S.view = v;
   $('#shell').classList.toggle('is-home', v.kind === 'home');
-  if (v.kind === 'home') { renderNav(); renderHome(); setPane('list'); return; }
+  if (v.kind === 'home') { renderNav(); springNavPill(); renderHome(); setPane('list'); return; }
   renderNav();
+  springNavPill();
   renderList();
   setPane('list');
   if (!keepNote) {
@@ -664,12 +673,14 @@ function outsideMenu(e) { if (menuEl && !menuEl.contains(e.target)) closeMenu();
 function openMenu(anchor, items, { at } = {}) {
   closeMenu();
   const m = el(`<div class="menu" role="menu"></div>`);
+  const anyIcon = items.some((it) => it?.icon);
   items.filter(Boolean).forEach((it) => {
     if (it === '-') { m.append(el('<div class="menu-sep"></div>')); return; }
     if (it.header) { m.append(el(`<div class="menu-header">${esc(it.header)}</div>`)); return; }
-    const b = el(`<button class="menu-item ${it.danger ? 'danger' : ''}" role="menuitem">
-      <span class="menu-ic">${it.checked ? icon('tick', 15) : it.icon ? icon(it.icon, 16) : ''}</span>
-      <span class="menu-label">${esc(it.label)}</span>${it.hint ? `<span class="menu-hint">${esc(it.hint)}</span>` : ''}${it.sub ? icon('chevronRight', 14) : ''}</button>`);
+    const radio = typeof it.checked === 'boolean';
+    const b = el(`<button class="menu-item ${it.danger ? 'danger' : ''}" role="${radio ? 'menuitemradio' : 'menuitem'}"${radio ? ` aria-checked="${it.checked}"` : ''}>
+      ${anyIcon ? `<span class="menu-ic">${it.icon ? icon(it.icon, 16) : ''}</span>` : ''}
+      <span class="menu-label">${esc(it.label)}</span>${it.hint ? `<span class="menu-hint">${esc(it.hint)}</span>` : ''}${it.checked ? `<span class="menu-tick">${icon('tick', 16)}</span>` : ''}${it.sub ? icon('chevronRight', 14) : ''}</button>`);
     if (it.disabled) b.disabled = true;
     b.onclick = (e) => { e.stopPropagation(); if (!it.sub) closeMenu(); it.onClick?.(b); };
     m.append(b);

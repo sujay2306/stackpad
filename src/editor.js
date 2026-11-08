@@ -847,6 +847,24 @@ function buildToolbar(editor, root, { pickImage }) {
     root.removeEventListener('scroll', onViewport);
   });
 
+  /* scroll hint: fade the trailing edge only while there is more to scroll to */
+  let ovRaf = 0;
+  const updateOverflow = () => {
+    ovRaf = 0;
+    const more = root.scrollWidth > root.clientWidth + 1 && root.scrollLeft + root.clientWidth < root.scrollWidth - 1;
+    root.classList.toggle('is-overflowing', more);
+  };
+  const queueOverflow = () => { if (!ovRaf) ovRaf = requestAnimationFrame(updateOverflow); };
+  const ro = new ResizeObserver(queueOverflow);
+  ro.observe(root);
+  root.addEventListener('scroll', queueOverflow, { passive: true });
+  cleanups.push(() => {
+    ro.disconnect();
+    cancelAnimationFrame(ovRaf);
+    root.removeEventListener('scroll', queueOverflow);
+    root.classList.remove('is-overflowing');
+  });
+
   /* refresh (cheap; runs per transaction) */
   let lastSig = '';
   function refresh() {
@@ -874,6 +892,7 @@ function buildToolbar(editor, root, { pickImage }) {
     gTable.hidden = !inTable;
     tableSep.hidden = !inTable;
     tableBtns.forEach(({ b }, i) => (b.disabled = !tState[i]));
+    queueOverflow();
   }
 
   return {
