@@ -26,7 +26,7 @@ const tr = (cells, tag = 'td') =>
 
 const WELCOME = `
 <p>Stackpad is a quiet place for everything on your mind. Notes, plans, code snippets and half-formed ideas, all <mark>kept in one calm space</mark>.</p>
-<p>Every note is saved privately in this browser. No account, no sign-in. To move your notes to another device, use <strong>Export backup</strong> and import it there.</p>
+<p>Start writing right away, no account needed. Notes save instantly in this browser and work offline. <strong>Sign in with Google</strong> (bottom left) to sync them across your laptop and phone.</p>
 <h2>Things to try</h2>
 <ul data-type="taskList">
 ${task('Type <code>/</code> on an empty line to insert any block')}
@@ -140,12 +140,8 @@ export function seedData(uid) {
     };
   };
 
-  const notes = [
-    note(gettingStarted.id, 'Welcome to Stackpad', WELCOME, ['stackpad'], 0, true),
-    note(gettingStarted.id, 'Markdown shortcuts', MARKDOWN, ['stackpad', 'reference'], 4),
-    note(personal.id, 'Weekend plan', WEEKEND, ['plans'], 12),
-    note(personal.id, 'Ideas', IDEAS, ['ideas'], 27),
-  ];
-
-  return { notebooks: [gettingStarted, personal], notes };
+  // Keep first launch clean: one notebook, one welcome note.
+  const notes = [note(personal.id, 'Welcome to Stackpad', WELCOME, [], 0, true)];
+  void gettingStarted; void MARKDOWN; void WEEKEND; void IDEAS;
+  return { notebooks: [personal], notes };
 }

@@ -9,6 +9,7 @@ import * as io from './io.js';
 import { createEditor } from './editor.js';
 import { TEMPLATES } from './templates.js';
 import { seedData } from './seed.js';
+import * as sync from './sync.js';
 import { icon, LOGO } from './icons.js';
 
 const APP = 'Stackpad';
@@ -136,6 +137,7 @@ function mountShell() {
       </div>
       <button class="search-trigger" id="openSearch">${icon('search', 16)}<span>Search</span><kbd>${MOD}K</kbd></button>
       <nav class="nav" id="nav"></nav>
+      <div class="account" id="account" hidden></div>
       <div class="side-foot">
         <button class="foot-btn" id="themeBtn" aria-label="Appearance" title="Appearance">${icon('sun', 17)}</button>
         <button class="foot-btn" id="importBtn" aria-label="Import" title="Import notes">${icon('upload', 17)}</button>
@@ -472,8 +474,8 @@ function leaveHome() {
   $('#shell').classList.remove('is-home');
   renderNav(); renderList();
 }
-function openNote(id) {
-  if (id && !booting) leaveHome();
+function openNote(id, { stay = false } = {}) {
+  if (id && !booting && !stay) leaveHome();
   const prev = S.currentId;
   if (prev && pending.has(prev)) flushNote(prev);
   S.currentId = id;
@@ -579,6 +581,7 @@ async function duplicateNote(n) {
 
 function trashNote(n) {
   n.trashed = Date.now();
+  n.updated = n.trashed;
   n.pinned = false;
   flushNote(n.id);
   store.saveNote(n);
@@ -587,6 +590,7 @@ function trashNote(n) {
 }
 function restoreNote(n, { quiet } = {}) {
   n.trashed = null;
+  n.updated = Date.now();
   store.saveNote(n);
   renderNav(); renderList();
   if (S.currentId === n.id || quiet) openNote(n.id);
@@ -619,6 +623,7 @@ async function emptyTrash() {
 }
 function togglePin(n) {
   n.pinned = !n.pinned;
+  n.updated = Date.now();
   store.saveNote(n);
   renderHead(); renderNav(); renderList();
   toast(n.pinned ? 'Added to Shortcuts' : 'Removed from Shortcuts');
@@ -660,7 +665,7 @@ async function deleteNotebook(nb) {
   const ok = await ask({ title: `Delete "${nb.name}"?`, message: live ? `Its ${plural(live, 'note')} will move to Trash, where you can restore them.` : 'This notebook is empty.', confirm: 'Delete notebook', danger: true });
   if (!ok) return;
   const fallback = notebookList().find((b) => b.id !== nb.id).id;
-  for (const n of inside) { n.notebookId = fallback; if (!n.trashed) n.trashed = Date.now(); n.pinned = false; await store.saveNote(n); }
+  for (const n of inside) { n.notebookId = fallback; if (!n.trashed) n.trashed = Date.now(); n.pinned = false; n.updated = Date.now(); await store.saveNote(n); }
   S.notebooks.delete(nb.id);
   await store.deleteNotebook(nb.id);
   if (S.view.kind === 'notebook' && S.view.id === nb.id) setView({ kind: 'all' });
@@ -1058,8 +1063,8 @@ function applyRemote({ kind, op, id, value }) {
     if (pending.has(id)) return; // local edits win
     if (op === 'delete') S.notes.delete(id); else if (value) S.notes.set(id, value);
     if (id === S.currentId) {
-      if (op === 'delete' || !value) openNote(null);
-      else if (!$('#editor').contains(document.activeElement) && document.activeElement !== $('#title')) openNote(id);
+      if (op === 'delete' || !value) openNote(null, { stay: true });
+      else if (!$('#editor').contains(document.activeElement) && document.activeElement !== $('#title')) openNote(id, { stay: true });
       else renderHead();
     }
   } else if (kind === 'notebook') {
@@ -1078,7 +1083,9 @@ async function boot() {
   for (const nb of data.notebooks) S.notebooks.set(nb.id, nb);
   for (const n of data.notes) S.notes.set(n.id, n);
   if (!S.notes.size && !S.notebooks.size && !(await store.getSetting('seeded', false))) {
-    const seed = seedData(store.uid);
+    let seedN = 0;
+    const seed = seedData((prefix) => `seed-${prefix}-${++seedN}`); // same ids on every device, so sync never duplicates them
+    await store.setSetting('seededAt', Date.now());
     seed.notebooks.forEach((nb) => S.notebooks.set(nb.id, nb));
     seed.notes.forEach((n) => S.notes.set(n.id, n));
     await store.bulkPut(seed);
@@ -1097,6 +1104,76 @@ async function boot() {
   store.requestPersistence();
   if (!S.persistent) toast('Private browsing: notes will not be kept after this tab closes. Export a backup to keep them.');
   document.body.classList.add('ready');
+  startSync();
+}
+
+// ---------- cloud sync (Supabase) ----------
+async function startSync() {
+  if (!sync.enabled) return;
+  $('#account').hidden = false;
+  renderAccount(sync.getState());
+  await sync.init({
+    onStatus: renderAccount,
+    onApply: applyRemote,
+    getLocal: (kind, id) => (kind === 'note' ? S.notes.get(id) : S.notebooks.get(id)) || null,
+    getAll: () => ({ notes: [...S.notes.values()], notebooks: [...S.notebooks.values()] }),
+    seededAt: (await store.getSetting('seededAt', 0)) || 0,
+  });
+}
+
+function renderAccount(st) {
+  const box = $('#account');
+  if (!box || st.status === 'off') return;
+  if (!st.user) {
+    box.innerHTML = `<button class="signin-btn" id="signInBtn">${icon('cloud', 17)}<span><b>Sign in to sync</b><small>Your notes on every device</small></span></button>`;
+    $('#signInBtn').onclick = async () => {
+      try { await sync.signIn(); } catch (err) { toast(err?.message || 'Sign-in failed. Try again.'); }
+    };
+    return;
+  }
+  const label = {
+    syncing: 'Syncing',
+    synced: st.lastSynced ? `Synced ${relTime(st.lastSynced).toLowerCase()}` : 'Synced',
+    offline: st.pending ? `Offline · ${plural(st.pending, 'change')} waiting` : 'Offline',
+    error: 'Sync paused · retrying',
+    signedout: '',
+  }[st.status] || '';
+  const initial = esc((st.user.name || st.user.email || '?').trim()[0]?.toUpperCase() || '?');
+  box.innerHTML = `<button class="account-btn" id="accountBtn" title="${esc(st.user.email)}">
+      ${st.user.avatar ? `<img src="${esc(st.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="avatar">${initial}</span>`}
+      <span class="acc-text"><b>${esc(st.user.name)}</b><small class="sync-${st.status}"><i></i>${esc(label)}</small></span>
+    </button>`;
+  $('#accountBtn').onclick = (e) => openMenu(e.currentTarget, [
+    { header: st.user.email },
+    { label: 'Sync now', icon: 'restore', onClick: () => sync.syncNow() },
+    '-',
+    { label: 'Sign out', icon: 'x', onClick: signOutFlow },
+  ]);
+}
+setInterval(() => { if (sync.enabled && sync.isSignedIn()) renderAccount(sync.getState()); }, 30e3);
+
+async function signOutFlow() {
+  await sync.syncNow().catch(() => {});
+  const left = sync.pendingCount();
+  const ok = await ask({
+    title: 'Sign out?',
+    message: left
+      ? `${plural(left, 'change')} could not be synced yet and will be lost. Notes already synced stay safe in your account.`
+      : 'Your notes are safe in your account and will come back when you sign in. They will be removed from this device.',
+    confirm: 'Sign out',
+    danger: left > 0,
+  });
+  if (!ok) return;
+  await flushAll();
+  await sync.signOut(async () => {
+    for (const id of [...S.notes.keys()]) await store.deleteNote(id);
+    for (const id of [...S.notebooks.keys()]) await store.deleteNotebook(id);
+    S.notes.clear(); S.notebooks.clear();
+    await store.setSetting('lastNote', null);
+  });
+  openNote(null, { stay: true });
+  setView({ kind: 'home' }, { keepNote: true });
+  toast('Signed out');
 }
 
 boot();

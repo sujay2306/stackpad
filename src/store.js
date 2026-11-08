@@ -173,7 +173,19 @@ function getChannel() {
   return channel;
 }
 
+// Hooks for writes made in THIS tab (used by the cloud sync engine).
+const localHooks = new Set();
+/** Subscribe to writes made in this tab: cb({ kind, op, id, value }). Returns unsubscribe. */
+export function onLocalWrite(cb) {
+  if (typeof cb !== 'function') return () => {};
+  localHooks.add(cb);
+  return () => { localHooks.delete(cb); };
+}
+
 function broadcast(kind, op, id, value) {
+  for (const hook of localHooks) {
+    try { hook({ kind, op, id, value }); } catch (err) { warn('local write hook failed:', err); }
+  }
   const ch = getChannel();
   if (!ch) return;
   const msg = { kind, op, id };
