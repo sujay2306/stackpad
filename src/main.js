@@ -789,7 +789,7 @@ function templateMenu(anchor) {
   ]);
 }
 // Colour palettes: [id, name, light swatch, dark swatch]. Tokens live in styles/palettes.css. No data-palette = Notes.
-const PALETTES = [['evernote', 'Evernote', '#008523', '#008523'], ['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4']];
+const PALETTES = [['evernote', 'Evernote', '#00A82D', '#00A82D'], ['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4']];
 function themeMenu(anchor) {
   const cur = localStorage.getItem('stackpad-theme') || 'system';
   const m = openMenu(anchor, [
