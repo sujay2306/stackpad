@@ -150,6 +150,8 @@ function mountShell() {
         <div class="list-heading"><h2 id="listTitle"></h2><span id="listCount"></span></div>
         <button class="icon-btn" id="sortBtn" aria-label="Sort" title="Sort">${icon('sort')}</button>
         <button class="icon-btn" id="listMore" aria-label="More" title="More">${icon('more')}</button>
+        <button class="icon-btn only-mobile" data-m="theme" aria-label="Appearance">${icon('sun')}</button>
+        <button class="icon-btn only-mobile m-acct" data-m="acct" aria-label="Account">${icon('cloud')}</button>
         <button class="icon-btn only-mobile" id="newNoteMobile" aria-label="New note">${icon('plus')}</button>
       </header>
       <div class="list-body" id="listBody" role="listbox" aria-label="Notes"></div>
@@ -328,9 +330,13 @@ function renderHome() {
     <div class="home-inner">
       <header class="home-hero">
         <button class="icon-btn only-mobile" id="homeToNav" aria-label="Open navigation">${icon('menu')}</button>
+        <div class="m-quick only-mobile">
+          <button class="icon-btn" data-m="theme" aria-label="Appearance">${icon('sun')}</button>
+          <button class="icon-btn m-acct" data-m="acct" aria-label="Account">${icon('cloud')}</button>
+        </div>
         <div>
           <p class="home-date">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-          <h1>${greet}</h1>
+          <h1>${greet}<span id="greetName"></span></h1>
         </div>
         <span class="grow"></span>
         <button class="btn-primary home-new" id="homeNew">${icon('plus', 16)} New note</button>
@@ -379,6 +385,9 @@ function renderHome() {
   $('#homeAll').onclick = () => setView({ kind: 'all' });
   $('#homeNb').onclick = createNotebook;
   $('#homeToNav').onclick = () => setPane('nav');
+  if (sync.enabled) paintMobileAccount(sync.getState());
+  paintGreetName(sync.enabled ? sync.getState() : null);
+  $$('[data-m="theme"]', home).forEach((b) => (b.innerHTML = icon(document.documentElement.dataset.theme === 'dark' ? 'moon' : 'sun')));
   const sc = $('#scratch'), save = $('#scratchSave');
   sc.oninput = () => {
     S.scratch = sc.value;
@@ -944,6 +953,7 @@ function applyTheme() {
   const t = pref === 'system' ? (darkMQ.matches ? 'dark' : 'light') : pref;
   document.documentElement.dataset.theme = t;
   $('#themeBtn') && ($('#themeBtn').innerHTML = icon(t === 'dark' ? 'moon' : 'sun', 17));
+  $$('[data-m="theme"]').forEach((b) => (b.innerHTML = icon(t === 'dark' ? 'moon' : 'sun')));
 }
 function setTheme(v) { try { localStorage.setItem('stackpad-theme', v); } catch {} applyTheme(); }
 darkMQ.addEventListener?.('change', applyTheme);
@@ -1094,7 +1104,49 @@ async function startSync() {
   });
 }
 
+// Mobile quick controls: theme + account, reachable without opening the drawer.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-m]');
+  if (!b) return;
+  if (b.dataset.m === 'theme') themeMenu(b);
+  else accountMenu(b);
+});
+function accountMenu(anchor) {
+  const st = sync.enabled ? sync.getState() : null;
+  if (!st?.user) {
+    openMenu(anchor, [
+      { header: 'Your notes on every device' },
+      { label: 'Sign in to sync', icon: 'cloud', onClick: async () => {
+        try { await sync.signIn(); } catch (err) { toast(err?.message || 'Sign-in failed. Try again.'); }
+      } },
+    ]);
+    return;
+  }
+  openMenu(anchor, [
+    { header: st.user.email },
+    { label: 'Sync now', icon: 'restore', onClick: () => sync.syncNow() },
+    '-',
+    { label: 'Sign out', icon: 'x', onClick: signOutFlow },
+  ]);
+}
+function paintGreetName(st) {
+  const g = $('#greetName');
+  const first = (st?.user?.name || '').trim().split(/\s+/)[0];
+  if (g) g.textContent = first ? `, ${first}` : '';
+}
+function paintMobileAccount(st) {
+  const initial = esc((st?.user?.name || st?.user?.email || '?').trim()[0]?.toUpperCase() || '?');
+  $$('.m-acct').forEach((b) => {
+    b.classList.toggle('icon-btn', !!st?.user);
+    b.classList.toggle('m-signin', !st?.user);
+    b.innerHTML = !st?.user ? 'Sign in'
+      : st.user.avatar ? `<img class="m-avatar" src="${esc(st.user.avatar)}" alt="" referrerpolicy="no-referrer">` : `<span class="avatar m-avatar">${initial}</span>`;
+    b.setAttribute('aria-label', st?.user ? 'Account' : 'Sign in to sync');
+  });
+}
+
 function renderAccount(st) {
+  if (sync.enabled) { paintMobileAccount(st); paintGreetName(st); }
   const box = $('#account');
   if (!box || st.status === 'off') return;
   if (!st.user) {
