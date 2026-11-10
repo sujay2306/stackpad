@@ -5,17 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Stackpad</title>
 <meta name="description" content="Stackpad is a calm, fast notebook for everything you think. Notebooks, rich pages, checklists, tags and instant search. Free, private, no sign-up.">
-<meta name="theme-color" content="#FDFCFA" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#161513" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#EDF2EA" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="Stackpad · Notes, stacked and searchable.">
 <meta property="og:description" content="A calm, fast notebook. Rich pages, checklists, tags and instant search. Free and private.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:wght@400..600&family=Google+Sans+Flex:opsz,wght,ROND@6..144,400..800,0..100&display=swap">
 <script>
   // Set theme before first paint to avoid a flash.
   try {
     var t = localStorage.getItem('stackpad-theme') || 'system';
     if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     document.documentElement.dataset.theme = t;
+    var p = localStorage.getItem('stackpad-palette');
+    if (p && p !== 'notes') document.documentElement.dataset.palette = p;
   } catch (e) {}
 </script>
 </head>

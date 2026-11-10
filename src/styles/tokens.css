@@ -1,93 +1,141 @@
 /* Stackpad — design tokens + base reset
-   "Every thought, kept."  Warm paper, ink, and a single amber accent. */
+   Theme "Aloe": Pixel / Material 3 Expressive. Green-tinted tonal neutrals, mint containers,
+   pill shapes and spring motion. Spec: docs/THEME_SPEC.md */
 
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --bg:          #FDFCFA;  /* warm paper */
-  --bg-2:        #F6F5F1;  /* sidebar */
-  --surface:     #FFFFFF;
-  --surface-2:   #F1EFEA;  /* hover */
-  --surface-3:   #E9E6DF;  /* active / selected */
-  --line:        #ECE9E3;
-  --line-2:      #DCD8CF;
+  /* surfaces: tonal steps, green-tinted neutrals */
+  --bg:          #F8FAF6;  /* surface: editor page, app background */
+  --bg-2:        #EEF3EC;  /* surface-container-low: sidebar, list, home canvas */
+  --surface:     #FFFFFF;  /* surface-container-lowest: cards, menus, dialogs */
+  --surface-2:   #E7EDE5;  /* surface-container-high: hover, search pill, inputs */
+  --surface-3:   #DCE5DA;  /* surface-container-highest: pressed */
+  --line:        #E1E6DE;  /* decorative hairlines */
+  --line-2:      #C3CCC1;  /* outline-variant */
+  --outline:     #727970;  /* borders of interactive inputs/checkboxes (>=3:1) */
 
-  --text:        #1D1C1A;
-  --text-2:      #5E5B55;  /* 6.6:1 on --bg */
-  --text-3:      #8C887F;  /* 3.4:1 on --bg */
+  --text:        #191C1A;
+  --text-2:      #414942;
+  --text-3:      #5F675F;  /* 5.6:1 on --bg */
 
-  --accent:      #13874A;  /* stackpad green; white text 4.6:1 */
+  --accent:      #146C43;  /* primary: filled buttons, checkbox, focus ring */
   --accent-ink:  #FFFFFF;
-  --accent-soft: #E5F4EB;
-  --accent-text: #0F7A40;  /* 5.2:1 on --bg */
+  --accent-soft: #DDF3E3;
+  --accent-text: #0E6A40;
+  --accent-container:    #B9F0CD;
+  --on-accent-container: #00522F;
 
-  --ink:         #1D1C1A;
-  --ink-text:    #FDFCFA;  /* text on --ink fills */
+  --ink:         #191C1A;  /* inverse-surface: toasts */
+  --ink-text:    #F8FAF6;
+  --ink-accent:  #8FD9AC;
 
-  --danger:      #C2412D;
-  --danger-soft: #FBEAE6;
-  --ok:          #2F7D4F;
+  --danger:      #BA1A1A;
+  --danger-ink:  #FFFFFF;
+  --danger-soft: #FFDAD6;
+  --ok:          #1E7A4C;
+  --star:        #9A6700;
 
-  --hl:          #FCE7A6;
+  --hl:          #FFE38A;
 
-  --shadow-sm: 0 1px 2px rgba(29, 28, 26, 0.06);
-  --shadow-md: 0 1px 2px rgba(29, 28, 26, 0.05), 0 6px 20px -4px rgba(29, 28, 26, 0.10);
-  --shadow-lg: 0 2px 6px rgba(29, 28, 26, 0.05), 0 24px 56px -12px rgba(29, 28, 26, 0.20);
+  --scrim:       rgba(25, 28, 26, 0.32);
+
+  --shadow-sm: 0 1px 2px rgba(25, 28, 26, 0.06);
+  --shadow-md: 0 2px 6px rgba(25, 28, 26, 0.06), 0 8px 24px -6px rgba(25, 28, 26, 0.12);
+  --shadow-lg: 0 4px 12px rgba(25, 28, 26, 0.06), 0 24px 56px -12px rgba(25, 28, 26, 0.20);
+}
+
+/* Phone: light theme is softened so the screen isn't glaring white. Desktop unchanged. */
+@media (max-width: 859px) {
+  :root:not([data-theme="dark"]) {
+    --bg:        #EDF2EA;
+    --bg-2:      #E3EADF;
+    --surface:   #F7FAF5;
+    --surface-2: #DCE5D8;
+    --surface-3: #CFDBCB;
+    --line:      #D6DDD3;
+  }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg:          #161513;
-  --bg-2:        #1C1B18;
-  --surface:     #201F1C;
-  --surface-2:   #282723;
-  --surface-3:   #312F2A;
-  --line:        #2A2925;
-  --line-2:      #3A3833;
+  --bg:          #000000;
+  --bg-2:        #0A0A0A;
+  --surface:     #1C1C1E;
+  --surface-2:   #2C2C2E;
+  --surface-3:   #3A3A3C;
+  --line:        #FFFFFF14;
+  --line-2:      #48484A;
+  --outline:     #8E8E93;
 
-  --text:        #ECEAE5;
-  --text-2:      #A8A49C;  /* 7.4:1 on --bg */
-  --text-3:      #7D7970;  /* 4.2:1 on --bg */
+  --text:        #F2F2F7;
+  --text-2:      #C7C7CC;
+  --text-3:      #AAAAB0;
 
-  --accent:      #13874A;
-  --accent-ink:  #FFFFFF;
-  --accent-soft: #15301F;
-  --accent-text: #4CC27E;
+  --accent:      #8FD9AC;
+  --accent-ink:  #00391F;
+  --accent-soft: #18392A;
+  --accent-text: #8FD9AC;
+  --accent-container:    #0F5132;
+  --on-accent-container: #B9F0CD;
 
-  --ink:         #ECEAE5;
-  --ink-text:    #161513;
+  --ink:         #F2F2F7;
+  --ink-text:    #000000;
+  --ink-accent:  #146C43;
 
-  --danger:      #F07A66;
-  --danger-soft: #3A1F1A;
-  --ok:          #6CC28E;
+  --danger:      #FFB4AB;
+  --danger-ink:  #690005;
+  --danger-soft: #4A1712;
+  --ok:          #7DD8A0;
+  --star:        #F2C14E;
 
-  --hl:          #5C4615;
+  --hl:          #5A4A06;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px -6px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 28px 64px -12px rgba(0, 0, 0, 0.70);
+  --scrim:       rgba(0, 0, 0, 0.56);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 8px 24px -6px rgba(0, 0, 0, 0.60);
+  --shadow-lg: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 28px 64px -12px rgba(0, 0, 0, 0.72);
 }
 
 :root {
-  --radius-sm: 6px;
-  --radius:    10px;
-  --radius-lg: 14px;
+  /* shape */
+  --radius-xs:    6px;    /* inline code, mark, kbd, checkbox */
+  --radius-sm:    12px;   /* menu items, thumbnails, toolbar block button */
+  --radius:       20px;   /* list cards, code blocks, popovers, menus, recent cards */
+  --radius-lg:    28px;   /* dialogs, home widgets, palette */
+  --radius-full:  999px;  /* pills: buttons, nav pill, search, chips, icon buttons */
+  --radius-press: 12px;   /* the radius a pill morphs to while pressed */
 
-  --font-sans:  -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
-  --font-serif: "New York", "Iowan Old Style", "Apple Garamond", Charter, "Bitstream Charter", Georgia, serif;
-  --font-mono:  ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  /* type */
+  --font-sans:  "Google Sans Flex", "Figtree", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-serif: "New York", "Iowan Old Style", Charter, Georgia, serif;
+  --font-mono:  "Google Sans Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  --ease:     cubic-bezier(0.22, 1, 0.36, 1);   /* soft ease-out */
+  /* motion: standard curves */
+  --ease:     cubic-bezier(0.2, 0, 0, 1);       /* M3 emphasized */
   --ease-io:  cubic-bezier(0.65, 0, 0.35, 1);
-  --dur-1: 120ms;
-  --dur-2: 200ms;
-  --dur-3: 320ms;
+  --ease-in:  cubic-bezier(0.3, 0, 0.8, 0.15);  /* exits */
+  --ease-out: cubic-bezier(0.05, 0.7, 0.1, 1);  /* entrances */
+
+  /* motion: springs (linear() sampled from a damped spring) */
+  --spring: linear(0, 0.039, 0.132, 0.252, 0.38, 0.504, 0.615, 0.712, 0.792, 0.857, 0.907, 0.944, 0.971, 0.99, 1.003, 1.01, 1.014, 1.015, 1.015, 1.014, 1.012, 1.01, 1.008, 1.006, 1.005, 1.003, 1.002, 1.002, 1);
+  --spring-bouncy: linear(0, 0.057, 0.194, 0.367, 0.547, 0.711, 0.847, 0.952, 1.025, 1.069, 1.09, 1.095, 1.087, 1.073, 1.057, 1.04, 1.025, 1.012, 1.003, 0.997, 0.993, 0.991, 0.991, 0.992, 0.993, 0.995, 0.997, 0.998, 1);
+
+  --dur-1: 120ms;   /* colour / hover */
+  --dur-2: 220ms;   /* popovers, fades */
+  --dur-3: 340ms;   /* --spring moves, pane transitions */
+  --dur-4: 500ms;   /* --spring-bouncy moves */
 
   /* 4px spacing scale */
   --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
   --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px; --s-16: 64px;
+}
+
+@supports not (transition-timing-function: linear(0, 1)) {
+  :root { --spring: var(--ease); --spring-bouncy: var(--ease); }
 }
 
 /* ---------- Base reset ---------- */
@@ -109,7 +157,8 @@ html {
 body {
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 var(--font-sans);
+  font: 400 14px/1.5 var(--font-sans);
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -133,9 +182,8 @@ a { color: inherit; }
 
 :focus { outline: none; }
 :focus-visible {
-  outline: 2px solid var(--accent-text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
 }
 
 /* Thin, unobtrusive scrollbars */
@@ -147,11 +195,11 @@ a { color: inherit; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--line-2);
-  border-radius: 10px;
+  border-radius: var(--radius-full);
   border: 3px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background-color: var(--text-3); }
+::-webkit-scrollbar-thumb:hover { background-color: var(--outline); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -163,4 +211,5 @@ a { color: inherit; }
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  :root { --spring: var(--ease); --spring-bouncy: var(--ease); }
 }
