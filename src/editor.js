@@ -384,7 +384,7 @@ class SlashMenuView {
 
 /* ---------- main factory ---------- */
 
-export function createEditor({ element, toolbar, onChange, onImage } = {}) {
+export function createEditor({ element, toolbar, onChange, onImage, placeholder } = {}) {
   const toImage = async (file) => (onImage ? onImage(file) : readAsDataURL(file));
   const pending = new Set(); // positions awaiting async image inserts (mapped through edits)
   let destroyed = false;
@@ -488,7 +488,7 @@ export function createEditor({ element, toolbar, onChange, onImage } = {}) {
         includeChildren: false,
         placeholder: ({ editor: ed, node }) => {
           if (node.type.name === 'heading') return 'Heading';
-          if (ed.isEmpty) return 'Start writing, or type / for blocks';
+          if (ed.isEmpty) return placeholder?.() || 'Start writing, or type / for blocks';
           return 'Type / for blocks';
         },
       }),
@@ -847,6 +847,24 @@ function buildToolbar(editor, root, { pickImage }) {
     root.removeEventListener('scroll', onViewport);
   });
 
+  /* scroll hint: fade the trailing edge only while there is more to scroll to */
+  let ovRaf = 0;
+  const updateOverflow = () => {
+    ovRaf = 0;
+    const more = root.scrollWidth > root.clientWidth + 1 && root.scrollLeft + root.clientWidth < root.scrollWidth - 1;
+    root.classList.toggle('is-overflowing', more);
+  };
+  const queueOverflow = () => { if (!ovRaf) ovRaf = requestAnimationFrame(updateOverflow); };
+  const ro = new ResizeObserver(queueOverflow);
+  ro.observe(root);
+  root.addEventListener('scroll', queueOverflow, { passive: true });
+  cleanups.push(() => {
+    ro.disconnect();
+    cancelAnimationFrame(ovRaf);
+    root.removeEventListener('scroll', queueOverflow);
+    root.classList.remove('is-overflowing');
+  });
+
   /* refresh (cheap; runs per transaction) */
   let lastSig = '';
   function refresh() {
@@ -874,6 +892,7 @@ function buildToolbar(editor, root, { pickImage }) {
     gTable.hidden = !inTable;
     tableSep.hidden = !inTable;
     tableBtns.forEach(({ b }, i) => (b.disabled = !tState[i]));
+    queueOverflow();
   }
 
   return {

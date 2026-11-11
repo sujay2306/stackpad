@@ -1,5 +1,5 @@
 /* Stackpad — design tokens + base reset
-   Theme "Aloe": Pixel / Material 3 Expressive. Green-tinted tonal neutrals, mint containers,
+   Theme: Pixel / Material 3 Expressive. Green-tinted tonal neutrals, mint containers,
    pill shapes and spring motion. Spec: docs/THEME_SPEC.md */
 
 :root,
@@ -46,7 +46,6 @@
   --shadow-lg: 0 4px 12px rgba(25, 28, 26, 0.06), 0 24px 56px -12px rgba(25, 28, 26, 0.20);
 }
 
-/* Phone: light theme is softened so the screen isn't glaring white. Desktop unchanged. */
 @media (max-width: 859px) {
   :root:not([data-theme="dark"]) {
     --bg:        #EDF2EA;

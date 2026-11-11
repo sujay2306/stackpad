@@ -12,6 +12,8 @@ import { TEMPLATES } from './templates.js';
 import { seedData } from './seed.js';
 import * as sync from './sync.js';
 import { icon, LOGO } from './icons.js';
+import { createToday, isDayId } from './today.js';
+import { initPWA, mountInstallLine, takeLaunchAction } from './pwa.js';
 
 const APP = 'Stackpad';
 const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
@@ -55,6 +57,7 @@ const pending = new Map(); // noteId -> timer
 let api = null; // editor api
 let suppressChange = false;
 let booting = true;
+let today = null; // Today page controller (today.js)
 
 // ---------- persistence ----------
 function queueSave(note) {
@@ -96,7 +99,7 @@ function allTags() {
 function defaultNotebookId() {
   if (S.view.kind === 'notebook' && S.notebooks.has(S.view.id)) return S.view.id;
   const cur = S.notes.get(S.currentId);
-  if (cur && S.notebooks.has(cur.notebookId)) return cur.notebookId;
+  if (cur && S.notebooks.has(cur.notebookId) && !isDayId(cur.id)) return cur.notebookId;
   return notebookList()[0]?.id;
 }
 function notesInView(v = S.view) {
@@ -106,6 +109,7 @@ function notesInView(v = S.view) {
     arr = arr.filter((n) => !n.trashed);
     if (v.kind === 'notebook') arr = arr.filter((n) => n.notebookId === v.id);
     if (v.kind === 'tag') arr = arr.filter((n) => n.tags.includes(v.tag));
+    if (v.kind === 'today') arr = arr.filter((n) => n.notebookId === today.journalId());
   }
   const by = {
     updated: (a, b) => b.updated - a.updated,
@@ -120,6 +124,7 @@ function viewTitle(v = S.view) {
   if (v.kind === 'trash') return 'Trash';
   if (v.kind === 'notebook') return S.notebooks.get(v.id)?.name || 'Notebook';
   if (v.kind === 'tag') return `#${v.tag}`;
+  if (v.kind === 'today') return 'Journal';
 }
 const sameView = (a, b) => a.kind === b.kind && a.id === b.id && a.tag === b.tag;
 const firstImage = (html) => (html || '').match(/<img[^>]+src="([^"]+)"/)?.[1];
@@ -137,6 +142,7 @@ function mountShell() {
       <button class="search-trigger" id="openSearch">${icon('search', 16)}<span>Search</span><kbd>${MOD}K</kbd></button>
       <nav class="nav" id="nav"></nav>
       <div class="account" id="account" hidden></div>
+      <div class="install-line" id="installLine" hidden></div>
       <div class="side-foot">
         <button class="foot-btn" id="themeBtn" aria-label="Appearance" title="Appearance">${icon('sun', 17)}</button>
         <button class="foot-btn" id="importBtn" aria-label="Import" title="Import notes">${icon('upload', 17)}</button>
@@ -234,18 +240,24 @@ function mountShell() {
   api = createEditor({
     element: $('#editor'),
     toolbar: $('#toolbar'),
+    placeholder: () => today?.placeholder(),
     onChange: (editor) => {
       if (suppressChange) return;
-      const n = current();
+      const n = current() || today.materialize(); // a virtual day page becomes real on the first keystroke
       if (!n || n.trashed) return;
       n.content = editor.getHTML();
       n.text = editor.getText({ blockSeparator: '\n' });
       touch(n);
+      today.changed(n);
     },
     onImage: async (file) => {
       try { return await io.compressImage(file); }
       catch (err) { toast(err?.message || 'That file could not be added.'); throw err; }
     },
+  });
+  today = createToday({
+    S, api: () => api, openNote, touch, toast, setPane, flushNote, pending, renderNav, renderList, renderHead, renderTags, renderFooter,
+    saveNote: store.saveNote, saveNotebook: store.saveNotebook,
   });
 }
 
@@ -266,6 +278,7 @@ function renderNav() {
   const tags = allTags();
   $('#nav').innerHTML = `
     ${item({ kind: 'home' }, 'home', 'Home', '')}
+    ${item({ kind: 'today' }, 'calendar', 'Today', '')}
     ${item({ kind: 'all' }, 'notes', 'Notes', live.length)}
     <div class="nav-section"><span>Notebooks</span><button class="mini-btn" id="addNotebook" aria-label="New notebook" title="New notebook">${icon('plus', 15)}</button></div>
     ${nbs.map((nb) => item({ kind: 'notebook', id: nb.id }, 'book', nb.name, counts.get(nb.id) || 0, `<span class="nav-more" data-nb="${esc(nb.id)}" role="button" aria-label="Notebook options">${icon('more', 15)}</span>`)).join('')}
@@ -289,11 +302,21 @@ function renderNav() {
   $('#addNotebook').onclick = createNotebook;
 }
 
+// Play the nav pill spring once per view change (renderNav rebuilds the items already active)
+function springNavPill() {
+  const a = $('.nav-item.is-active');
+  if (!a) return;
+  a.classList.add('is-entering');
+  a.addEventListener('animationend', () => a.classList.remove('is-entering'), { once: true });
+}
+
 function setView(v, { keepNote = false } = {}) {
+  if (v.kind === 'today') { today.open(v.date); return; }
   S.view = v;
   $('#shell').classList.toggle('is-home', v.kind === 'home');
-  if (v.kind === 'home') { renderNav(); renderHome(); setPane('list'); return; }
+  if (v.kind === 'home') { renderNav(); springNavPill(); renderHome(); setPane('list'); focusCapture(); return; }
   renderNav();
+  springNavPill();
   renderList();
   setPane('list');
   if (!keepNote) {
@@ -302,6 +325,109 @@ function setView(v, { keepNote = false } = {}) {
     const curVisible = cur && list.includes(cur);
     if (!curVisible && !matchMedia('(max-width: 859px)').matches) openNote(list[0]?.id || null);
   }
+}
+
+// ---------- home: capture field ----------
+// One field at the top of Home. Enter opens the text as a note; Mod+Enter files it to Inbox and stays.
+// The field is mounted before the store loads so typing never waits; actions wait for `homeReady`.
+const INBOX = 'inbox'; // fixed id, so every device files into the same notebook
+let markHomeReady;
+const homeReady = new Promise((r) => (markHomeReady = r));
+let draftTimer;
+async function ensureInbox() {
+  if (!S.notebooks.has(INBOX)) {
+    const now = Date.now();
+    const nb = { id: INBOX, name: 'Inbox', created: now, updated: now };
+    S.notebooks.set(nb.id, nb);
+    await store.saveNotebook(nb);
+  }
+  return INBOX;
+}
+function splitCapture(text) {
+  const [first, ...rest] = text.trim().split('\n');
+  return { title: first.trim().slice(0, 120), html: rest.map((l) => `<p>${esc(l)}</p>`).join('') || '<p></p>' };
+}
+function saveDraft(value) {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => homeReady.then(() => store.setSetting('scratch', value)), 300);
+}
+function setDraft(value) {
+  const f = $('#capture');
+  if (f) { f.value = value; paintCapture(); }
+  saveDraft(value);
+}
+function paintCapture() {
+  const f = $('#capture');
+  f.style.height = 'auto';
+  f.style.height = `${f.scrollHeight}px`;
+  $('#captureHint').classList.toggle('is-on', !!f.value.trim());
+}
+async function captureOpen() {
+  const text = $('#capture').value;
+  if (!text.trim()) return;
+  await homeReady;
+  setDraft('');
+  newNote({ ...splitCapture(text), notebookId: await ensureInbox() });
+}
+async function captureToInbox() {
+  const text = $('#capture').value;
+  if (!text.trim()) return;
+  await homeReady;
+  setDraft('');
+  const { title, html } = splitCapture(text);
+  const now = Date.now();
+  const n = { id: store.uid('n'), notebookId: await ensureInbox(), title, content: html, text: io.htmlToText(html), tags: [], pinned: false, created: now, updated: now, trashed: null };
+  S.notes.set(n.id, n);
+  store.saveNote(n);
+  if (!S.firstNoteAt) store.setSetting('firstNoteAt', (S.firstNoteAt = now));
+  $('#capture').placeholder = 'Write something down';
+  renderNav(); renderList(); renderHome();
+  toast('Saved to Inbox', { label: 'Undo', fn: () => {
+    S.notes.delete(n.id);
+    store.deleteNote(n.id);
+    if (!$('#capture').value.trim()) setDraft(text);
+    renderNav(); renderList(); renderHome();
+    $('#capture').focus();
+  } });
+}
+function focusCapture() {
+  if (matchMedia('(min-width: 860px) and (hover: hover)').matches) $('#capture')?.focus();
+}
+function mountHome() {
+  const home = $('#home');
+  if ($('#capture', home)) return;
+  home.innerHTML = `
+    <div class="home-inner">
+      <header class="home-hero" id="homeHero"></header>
+      <textarea class="capture" id="capture" rows="2" placeholder="Write something down" aria-label="Write something down" aria-describedby="captureHint"></textarea>
+      <p class="capture-hint" id="captureHint">Enter to open · ${MOD}Enter to save to Inbox</p>
+      <div id="homeBody"></div>
+    </div>`;
+  const f = $('#capture');
+  f.oninput = () => { paintCapture(); saveDraft(f.value); };
+  f.onkeydown = (e) => {
+    if (e.key !== 'Enter' || e.shiftKey || e.altKey || e.isComposing) return;
+    e.preventDefault();
+    if (IS_MAC ? e.metaKey : e.ctrlKey) captureToInbox(); else captureOpen();
+  };
+  renderHero();
+}
+function renderHero() {
+  const h = new Date().getHours();
+  const greet = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  $('#homeHero').innerHTML = `
+    <button class="icon-btn only-mobile" id="homeToNav" aria-label="Open navigation">${icon('menu')}</button>
+    <div class="m-quick only-mobile">
+      <button class="icon-btn" data-m="theme" aria-label="Appearance">${icon(document.documentElement.dataset.theme === 'dark' ? 'moon' : 'sun')}</button>
+      <button class="icon-btn m-acct" data-m="acct" aria-label="Account">${icon('cloud')}</button>
+    </div>
+    <div>
+      <p class="home-date">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+      <h1>${greet}<span id="greetName"></span></h1>
+    </div>`;
+  $('#homeToNav').onclick = () => setPane('nav');
+  if (sync.enabled) paintMobileAccount(sync.getState());
+  paintGreetName(sync.enabled ? sync.getState() : null);
 }
 
 // ---------- home dashboard ----------
@@ -319,93 +445,45 @@ function openTasks() {
   }
   return out;
 }
-let scratchTimer;
+// Re-renders everything below the capture field; the field itself is never rebuilt, so focus and caret survive.
 function renderHome() {
-  const home = $('#home');
-  const h = new Date().getHours();
-  const greet = h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  mountHome();
+  renderHero();
+  const body = $('#homeBody');
   const recent = liveNotes().sort((a, b) => b.updated - a.updated).slice(0, 10);
   const tasks = openTasks();
-  const nbName = (n) => esc(S.notebooks.get(n.notebookId)?.name || '');
-  home.innerHTML = `
-    <div class="home-inner">
-      <header class="home-hero">
-        <button class="icon-btn only-mobile" id="homeToNav" aria-label="Open navigation">${icon('menu')}</button>
-        <div class="m-quick only-mobile">
-          <button class="icon-btn" data-m="theme" aria-label="Appearance">${icon('sun')}</button>
-          <button class="icon-btn m-acct" data-m="acct" aria-label="Account">${icon('cloud')}</button>
-        </div>
-        <div>
-          <p class="home-date">${new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-          <h1>${greet}<span id="greetName"></span></h1>
-        </div>
-        <span class="grow"></span>
-        <button class="btn-primary home-new" id="homeNew">${icon('plus', 16)} New note</button>
-      </header>
-
-      <section class="widget widget-recent">
-        <div class="widget-head"><h2>Recent notes</h2><button class="link-btn" id="homeAll">View all ${icon('chevronRight', 14)}</button></div>
-        <div class="recent-row">
-          ${recent.map((n) => {
-            const img = firstImage(n.content);
-            return `<button class="recent-card" data-id="${esc(n.id)}">
-              <span class="rc-title">${esc(n.title || 'Untitled')}</span>
-              ${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span class="rc-snippet">${esc((n.text || '').replace(/\s+/g, ' ').slice(0, 140))}</span>`}
-              <span class="rc-meta">${relTime(n.updated)}</span>
-            </button>`;
-          }).join('')}
-          <button class="recent-card recent-new" id="homeNew2">${icon('plus', 22)}<span>Create new note</span></button>
-        </div>
+  body.innerHTML = `
+      <section class="home-recent">
+        <div class="widget-head"><h2>Recent notes</h2>${recent.length ? `<button class="link-btn" id="homeAll">View all ${icon('chevronRight', 14)}</button>` : ''}</div>
+        ${recent.length ? `<div class="recent-row">${recent.map((n) => {
+          const img = firstImage(n.content);
+          return `<button class="recent-card" data-id="${esc(n.id)}">
+            <span class="rc-title">${esc(n.title || 'Untitled')}</span>
+            ${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : `<span class="rc-snippet">${esc((n.text || '').replace(/\s+/g, ' ').slice(0, 140))}</span>`}
+            <span class="rc-meta">${relTime(n.updated)}</span>
+          </button>`;
+        }).join('')}</div>` : `<p class="widget-empty">Notes you write will show up here.</p>`}
       </section>
 
       <div class="widget-grid">
         <section class="widget">
-          <div class="widget-head"><h2>Scratch pad</h2><button class="link-btn" id="scratchSave" ${S.scratch?.trim() ? '' : 'disabled'}>Save as note</button></div>
-          <textarea class="scratch" id="scratch" placeholder="Jot something down. It stays here until you save it as a note.">${esc(S.scratch || '')}</textarea>
-        </section>
-
-        <section class="widget">
           <div class="widget-head"><h2>Open tasks</h2><span class="widget-count">${tasks.length}</span></div>
-          ${tasks.length ? `<ul class="task-list">${tasks.slice(0, 8).map((t) => `
+          ${tasks.length ? `<ul class="task-list">${tasks.slice(0, 5).map((t) => `
             <li><button data-id="${esc(t.note.id)}"><span class="tl-box"></span><span class="tl-text">${esc(t.text)}</span><span class="tl-note">${esc(t.note.title || 'Untitled')}</span></button></li>`).join('')}</ul>`
           : `<p class="widget-empty">No open tasks. Type <kbd>[ ]</kbd> in any note to add one.</p>`}
         </section>
-
 
         <section class="widget">
           <div class="widget-head"><h2>Notebooks</h2><button class="link-btn" id="homeNb">${icon('plus', 14)} New</button></div>
           <ul class="pin-list">${notebookList().map((nb) => `
             <li><button data-nb="${esc(nb.id)}">${icon('book', 15)}<span>${esc(nb.name)}</span><span class="pl-nb">${liveNotes().filter((n) => n.notebookId === nb.id).length}</span></button></li>`).join('')}</ul>
         </section>
-      </div>
-    </div>`;
+      </div>`;
   const open = (id) => { openNote(id); setPane('editor'); };
-  $$('[data-id]', home).forEach((b) => (b.onclick = () => open(b.dataset.id)));
-  $$('[data-nb]', home).forEach((b) => (b.onclick = () => setView({ kind: 'notebook', id: b.dataset.nb })));
-  $('#homeNew').onclick = $('#homeNew2').onclick = () => newNote();
-  $('#homeAll').onclick = () => setView({ kind: 'all' });
+  $$('[data-id]', body).forEach((b) => (b.onclick = () => open(b.dataset.id)));
+  $$('[data-nb]', body).forEach((b) => (b.onclick = () => setView({ kind: 'notebook', id: b.dataset.nb })));
+  if ($('#homeAll')) $('#homeAll').onclick = () => setView({ kind: 'all' });
   $('#homeNb').onclick = createNotebook;
-  $('#homeToNav').onclick = () => setPane('nav');
-  if (sync.enabled) paintMobileAccount(sync.getState());
-  paintGreetName(sync.enabled ? sync.getState() : null);
-  $$('[data-m="theme"]', home).forEach((b) => (b.innerHTML = icon(document.documentElement.dataset.theme === 'dark' ? 'moon' : 'sun')));
-  const sc = $('#scratch'), save = $('#scratchSave');
-  sc.oninput = () => {
-    S.scratch = sc.value;
-    save.disabled = !sc.value.trim();
-    clearTimeout(scratchTimer);
-    scratchTimer = setTimeout(() => store.setSetting('scratch', S.scratch), 300);
-  };
-  save.onclick = () => {
-    const text = sc.value.trim();
-    if (!text) return;
-    const lines = text.split('\n');
-    const html = lines.slice(1).map((l) => `<p>${esc(l)}</p>`).join('') || '<p></p>';
-    S.scratch = '';
-    store.setSetting('scratch', '');
-    newNote({ title: lines[0].slice(0, 120), html });
-    toast('Scratch pad saved as a note');
-  };
 }
 
 // ---------- list ----------
@@ -427,6 +505,7 @@ function renderList() {
       trash: ['Trash is empty', 'Deleted notes wait here until you clear them.'],
       notebook: ['This notebook is empty', 'Add a page to get started.'],
       tag: ['Nothing tagged', 'Notes with this tag will show up here.'],
+      today: ['No daily pages yet', 'Write on Today and each day is kept here.'],
     }[S.view.kind];
     body.innerHTML = `<div class="list-empty"><h4>${msg[0]}</h4><p>${msg[1]}</p>${S.view.kind !== 'trash' ? `<button class="btn-quiet" id="listEmptyNew">${icon('plus', 15)} New note</button>` : ''}</div>`;
     $('#listEmptyNew')?.addEventListener('click', () => newNote());
@@ -476,6 +555,8 @@ function openNote(id, { stay = false } = {}) {
   const prev = S.currentId;
   if (prev && pending.has(prev)) flushNote(prev);
   S.currentId = id;
+  today.clearVirtual();
+  today.paint();
   const n = current();
   $('#editorPane').classList.toggle('is-empty', !n);
   $$('#listBody .card').forEach((c) => { const on = c.dataset.id === id; c.classList.toggle('is-active', on); c.setAttribute('aria-selected', on); });
@@ -494,6 +575,7 @@ function openNote(id, { stay = false } = {}) {
   renderHead();
   renderTags();
   renderFooter();
+  today.paint();
   store.setSetting('lastNote', id);
 }
 
@@ -544,6 +626,7 @@ function renderTags() {
 // ---------- note operations ----------
 async function newNote({ title = '', html = '', notebookId } = {}) {
   leaveHome();
+  if (S.view.kind === 'today') S.view = { kind: 'all' };
   let nbId = notebookId || defaultNotebookId();
   if (!nbId) nbId = (await makeNotebook('Personal')).id;
   const now = Date.now();
@@ -552,6 +635,7 @@ async function newNote({ title = '', html = '', notebookId } = {}) {
     tags: S.view.kind === 'tag' ? [S.view.tag] : [], pinned: false, created: now, updated: now, trashed: null,
   };
   S.notes.set(n.id, n);
+  if (!S.firstNoteAt) store.setSetting('firstNoteAt', (S.firstNoteAt = now));
   store.saveNote(n); // fire-and-forget: UI must respond instantly so no keystrokes are lost
   if (S.view.kind === 'trash' || (S.view.kind === 'notebook' && S.view.id !== nbId)) S.view = { kind: 'notebook', id: nbId };
   renderNav();
@@ -665,12 +749,14 @@ function outsideMenu(e) { if (menuEl && !menuEl.contains(e.target)) closeMenu();
 function openMenu(anchor, items, { at } = {}) {
   closeMenu();
   const m = el(`<div class="menu" role="menu"></div>`);
+  const anyIcon = items.some((it) => it?.icon);
   items.filter(Boolean).forEach((it) => {
     if (it === '-') { m.append(el('<div class="menu-sep"></div>')); return; }
     if (it.header) { m.append(el(`<div class="menu-header">${esc(it.header)}</div>`)); return; }
-    const b = el(`<button class="menu-item ${it.danger ? 'danger' : ''}" role="menuitem">
-      <span class="menu-ic">${it.checked ? icon('tick', 15) : it.icon ? icon(it.icon, 16) : ''}</span>
-      <span class="menu-label">${esc(it.label)}</span>${it.hint ? `<span class="menu-hint">${esc(it.hint)}</span>` : ''}${it.sub ? icon('chevronRight', 14) : ''}</button>`);
+    const radio = typeof it.checked === 'boolean';
+    const b = el(`<button class="menu-item ${it.danger ? 'danger' : ''}" role="${radio ? 'menuitemradio' : 'menuitem'}"${radio ? ` aria-checked="${it.checked}"` : ''}>
+      ${anyIcon ? `<span class="menu-ic">${it.icon ? icon(it.icon, 16) : ''}</span>` : ''}
+      <span class="menu-label">${esc(it.label)}</span>${it.hint ? `<span class="menu-hint">${esc(it.hint)}</span>` : ''}${it.checked ? `<span class="menu-tick">${icon('tick', 16)}</span>` : ''}${it.sub ? icon('chevronRight', 14) : ''}</button>`);
     if (it.disabled) b.disabled = true;
     b.onclick = (e) => { e.stopPropagation(); if (!it.sub) closeMenu(); it.onClick?.(b); };
     m.append(b);
@@ -703,10 +789,7 @@ function templateMenu(anchor) {
   ]);
 }
 // Colour palettes: [id, name, light swatch, dark swatch]. Tokens live in styles/palettes.css. No data-palette = Notes.
-const PALETTES = [['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4'], ['evernote', 'Evernote', '#008523', '#008523'], ['aloe', 'Aloe', '#146C43', '#52CD86'], ['teal', 'Teal', '#006965', '#0DCBC3'], ['ocean', 'Ocean', '#0B618F', '#51BCFF'],
-  ['iris', 'Iris', '#565193', '#A9A5FF'], ['plum', 'Plum', '#7B4477', '#EC86E4'], ['rose', 'Rose', '#8E3958', '#FF83AD'],
-  ['coral', 'Coral', '#8C4234', '#FF8C76'], ['mango', 'Mango', '#8A4605', '#FF9137'], ['sand', 'Sand', '#755423', '#DAA75D'],
-  ['lime', 'Lime', '#486611', '#8EC620'], ['mono', 'Mono', '#2B2D31', '#E8E8E8']];
+const PALETTES = [['evernote', 'Evernote', '#00A82D', '#00A82D'], ['notes', 'Notes', '#F7C600', '#FFD60A'], ['notion', 'Notion', '#0E76D4', '#0E76D4']];
 function themeMenu(anchor) {
   const cur = localStorage.getItem('stackpad-theme') || 'system';
   const m = openMenu(anchor, [
@@ -715,7 +798,7 @@ function themeMenu(anchor) {
     '-',
     { header: 'Colour' },
   ]);
-  const pal = document.documentElement.dataset.palette || 'notes';
+  const pal = document.documentElement.dataset.palette || 'evernote';
   const row = el(`<div class="swatches" role="radiogroup" aria-label="Colour palette">${PALETTES.map(([id, name, l, d]) =>
     `<button class="swatch" role="radio" aria-checked="${id === pal}" aria-label="${name}" title="${name}" data-pal="${id}" style="--sw-l:${l};--sw-d:${d}">${icon('tick', 16)}</button>`).join('')}</div>`);
   row.onclick = (e) => {
@@ -728,7 +811,7 @@ function themeMenu(anchor) {
   if (over > 0) m.style.top = `${Math.max(8, m.offsetTop - over)}px`;
 }
 function setPalette(id) {
-  if (id === 'notes') delete document.documentElement.dataset.palette; else document.documentElement.dataset.palette = id;
+  document.documentElement.dataset.palette = id;
   try { localStorage.setItem('stackpad-palette', id); } catch {}
 }
 function sortMenu(anchor) {
@@ -846,6 +929,7 @@ function openPalette() {
 
   const actions = [
     { label: 'New note', icon: 'plus', hint: `${ALT}N`, run: () => newNote() },
+    { label: 'Open Today', icon: 'calendar', hint: `${ALT}T`, run: () => today.open() },
     { label: 'New notebook', icon: 'book', run: createNotebook },
     ...TEMPLATES.map((t) => ({ label: `New from template: ${t.name}`, icon: t.icon, run: () => newNote({ title: t.title(), html: t.html() }) })),
     { label: 'Toggle dark mode', icon: 'moon', run: () => setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark') },
@@ -878,7 +962,7 @@ function openPalette() {
     if (!terms.length) {
       const recent = liveNotes().sort((a, b) => b.updated - a.updated).slice(0, 6);
       if (recent.length) items.push({ section: 'Recent' }, ...recent.map((n) => ({ note: n, html: esc(n.title || 'Untitled'), sub: S.notebooks.get(n.notebookId)?.name })));
-      items.push({ section: 'Actions' }, ...actions.slice(0, 2).concat(actions.slice(-5)).map((a) => ({ action: a })));
+      items.push({ section: 'Actions' }, ...actions.slice(0, 3).concat(actions.slice(-5)).map((a) => ({ action: a })));
     } else {
       const scored = [];
       for (const n of liveNotes()) {
@@ -952,7 +1036,7 @@ function openPalette() {
 
 function showShortcuts() {
   const rows = [
-    ['Search everything', `${MOD}K`], ['New note', `${ALT}N`], ['Focus mode', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}F`], ['Insert a block', '/'],
+    ['Search everything', `${MOD}K`], ['New note', `${ALT}N`], ['Today', `${ALT}T`], ['Focus mode', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}F`], ['Insert a block', '/'],
     ['Bold / Italic / Underline', `${MOD}B  ${MOD}I  ${MOD}U`], ['Highlight', `${MOD}${IS_MAC ? '⇧' : 'Shift+'}H`],
     ['Heading 1 / 2 / 3', `${MOD}${ALT}1  2  3`], ['Checklist', `[ ] then space`], ['Bulleted / Numbered list', '-  or  1.'],
     ['Quote / Code block', '>   or   ```'], ['Undo / Redo', `${MOD}Z  ${MOD}${IS_MAC ? '⇧' : 'Shift+'}Z`], ['Show this panel', '?'],
@@ -1052,6 +1136,7 @@ document.addEventListener('keydown', (e) => {
   const mod = IS_MAC ? e.metaKey : e.ctrlKey;
   if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); $('.palette-backdrop') ? null : openPalette(); return; }
   if (e.altKey && !mod && e.code === 'KeyN') { e.preventDefault(); newNote(); return; }
+  if (e.altKey && !mod && e.code === 'KeyT') { e.preventDefault(); today.open(); return; }
   if (mod && e.shiftKey && e.code === 'KeyF') { e.preventDefault(); toggleFocus(); return; }
   if (mod && !e.shiftKey && e.key.toLowerCase() === 's') { e.preventDefault(); flushAll().then(() => toast('All changes saved')); return; }
   if (e.key === 'Escape' && S.focus && !$('.modal-backdrop,.palette-backdrop,.menu')) { toggleFocus(); return; }
@@ -1068,6 +1153,7 @@ function applyRemote({ kind, op, id, value }) {
   if (kind === 'note') {
     if (pending.has(id)) return; // local edits win
     if (op === 'delete') S.notes.delete(id); else if (value) S.notes.set(id, value);
+    today.onRemote(id);
     if (id === S.currentId) {
       if (op === 'delete' || !value) openNote(null, { stay: true });
       else if (!$('#editor').contains(document.activeElement) && document.activeElement !== $('#title')) openNote(id, { stay: true });
@@ -1080,10 +1166,16 @@ function applyRemote({ kind, op, id, value }) {
 }
 
 async function boot() {
+  initPWA();
   applyTheme();
   mountShell();
+  mountInstallLine($('#installLine'));
   applyTheme();
   setPane('list');
+  // Capture is usable before the store loads: show Home with the field now, write the note once ready.
+  $('#shell').classList.add('is-home');
+  mountHome();
+  focusCapture();
   const data = await store.init();
   S.persistent = data.persistent;
   for (const nb of data.notebooks) S.notebooks.set(nb.id, nb);
@@ -1104,12 +1196,26 @@ async function boot() {
   const start = S.notes.get(last) && !S.notes.get(last).trashed ? last : notesInView()[0]?.id || null;
   openNote(start);
   booting = false;
-  S.scratch = (await store.getSetting('scratch', '')) || '';
+  // The old scratch pad text becomes the capture draft, ahead of anything typed while loading.
+  const draft = (await store.getSetting('scratch', '')) || '';
+  const typed = $('#capture').value;
+  if (draft.trim()) setDraft(typed.trim() ? `${draft}\n${typed}` : draft);
+  S.firstNoteAt = (await store.getSetting('firstNoteAt', 0)) || 0;
+  if (!S.firstNoteAt && [...S.notes.keys()].every((id) => id.startsWith('seed-'))) $('#capture').placeholder = "What's on your mind? Start typing.";
   setView({ kind: 'home' }, { keepNote: true });
+  markHomeReady();
+  const params = new URLSearchParams(location.search);
+  if (params.has('today')) {
+    today.open();
+    params.delete('today');
+    history.replaceState(null, '', location.pathname + (params.size ? `?${params}` : '') + location.hash);
+  }
   store.onRemoteChange(applyRemote);
   store.requestPersistence();
   if (!S.persistent) toast('Private browsing: notes will not be kept after this tab closes. Export a backup to keep them.');
   document.body.classList.add('ready');
+  const launch = takeLaunchAction(); // app shortcuts; 'today' is reserved for the Today page
+  if (launch === 'new') newNote();
   startSync();
 }
 
