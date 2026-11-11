@@ -439,6 +439,12 @@ body.focus-mode .page { padding-top: 72px; }
   transition: background-color var(--dur-1) var(--ease), transform var(--dur-3) var(--spring);
 }
 .recent-card:hover { background: var(--surface-2); }
+/* Dark: cards sat on the near-black --bg-2 and looked flat. Lift them to the raised surface tones. */
+:root[data-theme='dark'] .recent-card { background: var(--surface-2); }
+:root[data-theme='dark'] .recent-card:hover { background: var(--surface-3); }
+/* Coloured dark palettes: tint the cards with the palette's own accent, not grey. */
+:root[data-theme='dark'][data-palette] .recent-card { background: var(--accent-soft); }
+:root[data-theme='dark'][data-palette] .recent-card:hover { background: color-mix(in srgb, var(--accent-soft) 70%, var(--accent-container)); }
 .recent-card:active { transform: scale(.98); }
 .rc-title { font-weight: 600; font-size: 15px; line-height: 20px; letter-spacing: -.005em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: none; }
 .rc-snippet { font-size: 13px; color: var(--text-2); line-height: 1.5; flex: 0 1 auto; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }

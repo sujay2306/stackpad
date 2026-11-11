@@ -46,6 +46,17 @@
   --shadow-lg: 0 4px 12px rgba(25, 28, 26, 0.06), 0 24px 56px -12px rgba(25, 28, 26, 0.20);
 }
 
+@media (max-width: 859px) {
+  :root:not([data-theme="dark"]) {
+    --bg:        #EDF2EA;
+    --bg-2:      #E3EADF;
+    --surface:   #F7FAF5;
+    --surface-2: #DCE5D8;
+    --surface-3: #CFDBCB;
+    --line:      #D6DDD3;
+  }
+}
+
 :root[data-theme="dark"] {
   color-scheme: dark;
 
